@@ -12,10 +12,22 @@ Contents:
    :maxdepth: 3
 
    Introduction
+   Setup
+
+   RakeTasks
 
    ActiveNode
    ActiveRel
+
+   Properties
+
+   Querying
+
+   QueryClauseMethods
+
    Configuration
+
+   Contributing
 
    api/index
 

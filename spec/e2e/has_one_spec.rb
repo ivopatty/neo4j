@@ -19,27 +19,12 @@ describe 'has_one' do
       end
     end
 
+    # See unpersisted_association_spec.rb for additional tests related to this
     context 'with non-persisted node' do
       let(:unsaved_node) { HasOneB.new }
+
       it 'returns a nil object' do
         expect(unsaved_node.parent).to eq nil
-      end
-
-      it 'raises an error when trying to create a relationship' do
-        expect { unsaved_node.parent = HasOneA.create }.to raise_error(Neo4j::ActiveNode::HasN::NonPersistedNodeError)
-      end
-
-      context 'with enabled auto-saving' do
-        let_config(:autosave_on_assignment) { true }
-
-        it 'saves the node' do
-          expect { unsaved_node.parent = HasOneA.create }.to change(unsaved_node, :persisted?).from(false).to(true)
-        end
-
-        it 'saves the associated node' do
-          other_node = HasOneA.new
-          expect { unsaved_node.parent = other_node }.to change(other_node, :persisted?).from(false).to(true)
-        end
       end
     end
 
@@ -53,6 +38,39 @@ describe 'has_one' do
       c.parent.should eq(a)
       b.parent.should eq(a)
       a.children.to_a.should =~ [b, c]
+    end
+
+    it 'caches the result of has_one accessor' do
+      a = HasOneA.create(name: 'a')
+      b = HasOneB.create(name: 'b')
+      a.children << b
+
+      b = HasOneB.find(b.id)
+
+      expect_queries(1) do
+        b.parent.should eq(a)
+        b.parent.should eq(a)
+      end
+    end
+
+    it 'clears the cached result of a has_one accessor on reload' do
+      a = HasOneA.create(name: 'a')
+      b = HasOneB.create(name: 'b')
+      a.children << b
+
+      b = HasOneB.find(b.id)
+
+      expect_queries(1) do
+        b.parent.should eq(a)
+        b.parent.should eq(a)
+      end
+
+      b.reload
+
+      expect_queries(1) do
+        b.parent.should eq(a)
+        b.parent.should eq(a)
+      end
     end
 
     it 'can create a relationship via the has_one accessor' do
@@ -120,6 +138,64 @@ describe 'has_one' do
     end
   end
 
+  describe 'has_one(:manager).from(:subordinates)' do
+    before(:each) do
+      stub_active_node_class('Person') do
+        has_many :out, :subordinates, type: nil, model_class: self
+        has_one :in, :manager, model_class: self, origin: :subordinates
+      end
+    end
+
+    let(:big_boss) { Person.create }
+    let(:manager) { Person.create }
+    let(:employee) { Person.create }
+
+    context 'with variable-length relationships' do
+      before do
+        big_boss.subordinates << manager
+        manager.subordinates << employee
+      end
+
+      it 'finds the chain of command' do
+        employee.manager(:p, :r, rel_length: {min: 0}).to_a.should match_array([employee, manager, big_boss])
+      end
+
+      it "finds the employee's superiors" do
+        employee.manager(:p, :r, rel_length: :any).to_a.should match_array([manager, big_boss])
+      end
+
+      it 'finds a specific superior in the chain of command' do
+        employee.manager(:p, :r, rel_length: 1).should eq(manager)
+        employee.manager(:p, :r, rel_length: 2).should eq(big_boss)
+      end
+
+      it 'finds parts of the chain of command using a range' do
+        employee.manager(:p, :r, rel_length: (0..1)).to_a.should match_array([employee, manager])
+      end
+
+      it 'finds parts of the chain of command using a hash' do
+        employee.manager(:p, :r, rel_length: {min: 1, max: 3}).to_a.should match_array([manager, big_boss])
+      end
+    end
+  end
+
+  describe 'association "getter" options' do
+    before(:each) do
+      stub_active_node_class('Person') do
+        has_many :out, :subordinates, type: nil, model_class: self
+        has_one :in, :manager, model_class: self, origin: :subordinates
+      end
+    end
+
+    let(:manager) { Person.create }
+    let(:employee) { Person.create }
+
+    it 'allows passing only a hash of options when naming node/rel is not needed' do
+      manager.subordinates << employee
+      employee.manager(rel_length: 1).should eq(manager)
+    end
+  end
+
   describe 'callbacks' do
     before(:each) do
       stub_active_node_class('CallbackUser') do
@@ -155,6 +231,27 @@ describe 'has_one' do
     it 'prevents the relationship from beign created if a before callback returns false' do
       node1.failing_assoc = node2
       expect(node1.failing_assoc).to be_nil
+    end
+  end
+
+  describe 'id methods' do
+    before(:each) do
+      stub_active_node_class('Post') do
+        has_many :in, :comments, type: :COMMENTS_ON
+      end
+
+      stub_active_node_class('Comment') do
+        has_one :out, :post, type: :COMMENTS_ON
+      end
+    end
+
+    let(:post) { Post.create }
+    let(:comment) { Comment.create }
+    before(:each) { comment.post = post }
+
+    it 'returns various IDs for associations' do
+      expect(comment.post_id).to eq(post.id)
+      expect(comment.post_neo_id).to eq(post.neo_id)
     end
   end
 end

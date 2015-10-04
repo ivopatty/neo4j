@@ -1,22 +1,28 @@
 require 'rake'
 require 'bundler/gem_tasks'
 require 'neo4j-core'
-load 'neo4j/tasks/neo4j_server.rake'
+require 'neo4j/rake_tasks'
 load 'neo4j/tasks/migration.rake'
 
 desc 'Generate YARD documentation'
 
+require 'colored'
+def system_or_fail(command)
+  puts 'Running command: '.blue + command
+  system(command) or fail "Unable to run: #{command}" # rubocop:disable Style/AndOr
+end
+
 namespace :docs do
   task :yard do
-    `rm -rf docs/_build/_yard/*`
+    system_or_fail('rm -rf docs/_build/_yard/*')
     abort("can't generate YARD") unless system('yard -p docs/_yard/custom_templates -f rst')
   end
 
   task :sphinx do
-    `mkdir -p docs/api`
-    `rm -rf docs/api/*`
-    `cp -r docs/_build/_yard/* docs/api/`
-    `cp -r docs/assets/* docs/_build/html/_static/`
+    system_or_fail('mkdir -p docs/api')
+    system_or_fail('rm -rf docs/api/*')
+    system_or_fail('cp -r docs/_build/_yard/* docs/api/')
+    system_or_fail('cp -r docs/assets/* docs/_build/html/_static/')
     abort("can't generate Sphinx docs") unless system('cd docs && make html')
   end
 

@@ -33,14 +33,14 @@ module Neo4j::Shared
 
     # Tweaks properties
     def register_magic_properties
-      options[:type] ||= DateTime if name.to_sym == :created_at || name.to_sym == :updated_at
-      # TODO: Custom typecaster to fix the stuff below
-      # ActiveAttr does not handle "Time", Rails and Neo4j.rb 2.3 did
-      # Convert it to DateTime in the interest of consistency
-      options[:type] = DateTime if options[:type] == Time
+      options[:type] ||= Neo4j::Config.timestamp_type if timestamp_prop?
 
       register_magic_typecaster
       register_type_converter
+    end
+
+    def timestamp_prop?
+      name.to_sym == :created_at || name.to_sym == :updated_at
     end
 
     def register_magic_typecaster

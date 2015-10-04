@@ -17,6 +17,8 @@ Converts Date objects to Java long types. Must be timezone UTC.
 
    
 
+   
+
 
 
 
@@ -32,7 +34,7 @@ Files
 
 
 
-  * `lib/neo4j/shared/type_converters.rb:4 <https://github.com/neo4jrb/neo4j/blob/master/lib/neo4j/shared/type_converters.rb#L4>`_
+  * `lib/neo4j/shared/type_converters.rb:125 <https://github.com/neo4jrb/neo4j/blob/master/lib/neo4j/shared/type_converters.rb#L125>`_
 
 
 
@@ -48,10 +50,36 @@ Methods
 **.convert_type**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def convert_type
        Date
+     end
+
+
+
+.. _`Neo4j/Shared/TypeConverters/DateConverter.converted?`:
+
+**.converted?**
+  
+
+  .. code-block:: ruby
+
+     def converted?(value)
+       value.is_a?(db_type)
+     end
+
+
+
+.. _`Neo4j/Shared/TypeConverters/DateConverter.db_type`:
+
+**.db_type**
+  
+
+  .. code-block:: ruby
+
+     def db_type
+       Integer
      end
 
 
@@ -61,7 +89,7 @@ Methods
 **.to_db**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def to_db(value)
        Time.utc(value.year, value.month, value.day).to_i
@@ -74,7 +102,7 @@ Methods
 **.to_ruby**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def to_ruby(value)
        Time.at(value).utc.to_date

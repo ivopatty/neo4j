@@ -39,8 +39,6 @@ But also caches results and can have results cached on it
 
    
 
-   
-
 
 
 
@@ -76,13 +74,10 @@ Methods
 **#cache_query_proxy_result**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def cache_query_proxy_result
        @query_proxy.to_a.tap do |result|
-         result.each do |object|
-           object.instance_variable_set('@association_proxy', self)
-         end
          cache_result(result)
        end
      end
@@ -94,7 +89,7 @@ Methods
 **#cache_result**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def cache_result(result)
        @cached_result = result
@@ -108,7 +103,7 @@ Methods
 **#cached?**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def cached?
        !!@cached_result
@@ -121,7 +116,7 @@ Methods
 **#clear_cache_result**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def clear_cache_result
        cache_result(nil)
@@ -134,7 +129,7 @@ Methods
 **#each**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def each(&block)
        result.each(&block)
@@ -147,7 +142,7 @@ Methods
 **#initialize**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def initialize(query_proxy, cached_result = nil)
        @query_proxy = query_proxy
@@ -167,13 +162,13 @@ Methods
   States:
   Default
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def inspect
        if @cached_result
          @cached_result.inspect
        else
-         "<AssociationProxy @query_proxy=#{@query_proxy.inspect}>"
+         "#<AssociationProxy @query_proxy=#{@query_proxy.inspect}>"
        end
      end
 
@@ -184,16 +179,14 @@ Methods
 **#method_missing**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def method_missing(method_name, *args, &block)
        target = target_for_missing_method(method_name)
+       super if target.nil?
      
        cache_query_proxy_result if !cached? && !target.is_a?(Neo4j::ActiveNode::Query::QueryProxy)
-     
        clear_cache_result if target.is_a?(Neo4j::ActiveNode::Query::QueryProxy)
-     
-       return if target.nil?
      
        target.public_send(method_name, *args, &block)
      end
@@ -205,7 +198,7 @@ Methods
 **#result**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def result
        return @cached_result if @cached_result
@@ -217,22 +210,15 @@ Methods
 
 
 
-.. _`Neo4j/ActiveNode/HasN/AssociationProxy#with_associations`:
+.. _`Neo4j/ActiveNode/HasN/AssociationProxy#serializable_hash`:
 
-**#with_associations**
+**#serializable_hash**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
-     def with_associations(*spec)
-       return_object_clause = '[' + spec.map { |n| "collect(#{n})" }.join(',') + ']'
-       query_from_association_spec(spec).pluck(:previous, return_object_clause).map do |record, eager_data|
-         eager_data.each_with_index do |eager_records, index|
-           record.send(spec[index]).cache_result(eager_records)
-         end
-     
-         record
-       end
+     def serializable_hash(options = {})
+       to_a.map { |record| record.serializable_hash(options) }
      end
 
 

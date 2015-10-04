@@ -49,6 +49,12 @@ ClassMethods
 
    
 
+   
+
+   
+
+   
+
 
 
 
@@ -64,7 +70,7 @@ Files
 
 
 
-  * `lib/neo4j/active_node/has_n.rb:197 <https://github.com/neo4jrb/neo4j/blob/master/lib/neo4j/active_node/has_n.rb#L197>`_
+  * `lib/neo4j/active_node/has_n.rb:159 <https://github.com/neo4jrb/neo4j/blob/master/lib/neo4j/active_node/has_n.rb#L159>`_
 
 
 
@@ -79,9 +85,8 @@ Methods
 
 **#association?**
   rubocop:enable Style/PredicateName
-  :nocov:
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def association?(name)
        !!associations[name.to_sym]
@@ -94,7 +99,7 @@ Methods
 **#associations**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def associations
        @associations ||= {}
@@ -107,7 +112,7 @@ Methods
 **#associations_keys**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def associations_keys
        @associations_keys ||= associations.keys
@@ -119,9 +124,8 @@ Methods
 
 **#has_association?**
   :nocov:
-  rubocop:disable Style/PredicateName
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def has_association?(name)
        ActiveSupport::Deprecation.warn 'has_association? is deprecated and may be removed from future releases, use association? instead.', caller
@@ -137,7 +141,10 @@ Methods
   For defining an "has many" association on a model.  This defines a set of methods on
   your model instances.  For instance, if you define the association on a Person model:
   
-  has_many :out, :vehicles, type: :has_vehicle
+  
+  .. code-block:: ruby
+  
+    has_many :out, :vehicles, type: :has_vehicle
   
   This would define the following methods:
   
@@ -155,7 +162,10 @@ Methods
     either all ``Person`` nodes (if ``Person.vehicles`` is called), or all ``Vehicle`` objects
     associated with the ``Person`` nodes thus far represented in the QueryProxy chain.
     For example:
-      ``company.people.where(age: 40).vehicles``
+  
+    .. code-block:: ruby
+  
+      company.people.where(age: 40).vehicles
   
   Arguments:
     **direction:**
@@ -164,18 +174,24 @@ Methods
       Refers to the relative to the model on which the association is being defined.
   
       Example:
-        ``Person.has_many :out, :posts, type: :wrote``
   
-          means that a `WROTE` relationship goes from a `Person` node to a `Post` node
+      .. code-block:: ruby
+  
+        Person.has_many :out, :posts, type: :wrote
+  
+      means that a `WROTE` relationship goes from a `Person` node to a `Post` node
   
     **name:**
       The name of the association.  The affects the methods which are created (see above).
       The name is also used to form default assumptions about the model which is being referred to
   
       Example:
-        ``Person.has_many :out, :posts``
   
-        will assume a `model_class` option of ``'Post'`` unless otherwise specified
+      .. code-block:: ruby
+  
+        Person.has_many :out, :posts, type: :wrote
+  
+      will assume a `model_class` option of ``'Post'`` unless otherwise specified
   
     **options:** A ``Hash`` of options.  Allowed keys are:
       *type*: The Neo4j relationship type.  This option is required unless either the
@@ -185,26 +201,29 @@ Methods
         can be gathered.
   
         Example:
-          ``Person.has_many :out, :posts, origin: :author`` (`model_class` of `Post` is assumed here)
   
-          ``Post.has_one :in, :author, type: :has_author, model_class: 'Person'``
+        .. code-block:: ruby
+  
+          # `model_class` of `Post` is assumed here
+          Person.has_many :out, :posts, origin: :author
+  
+          Post.has_one :in, :author, type: :has_author, model_class: 'Person'
   
       *model_class*: The model class to which the association is referring.  Can be either a
-        model object ``include`` ing ``ActiveNode`` or a string (or an ``Array`` of same).
-        **A string is recommended** to avoid load-time issues
+        model object ``include`` ing ``ActiveNode`` or a Symbol/String (or an ``Array`` of same).
+        **A Symbol or String is recommended** to avoid load-time issues
   
-      *rel_class*: The ``ActiveRel`` class to use for this association.  Can be either a 
-        model object ``include`` ing ``ActiveRel`` or a string (or an ``Array`` of same).
-        **A string is recommended** to avoid load-time issues
+      *rel_class*: The ``ActiveRel`` class to use for this association.  Can be either a
+        model object ``include`` ing ``ActiveRel`` or a Symbol/String (or an ``Array`` of same).
+        **A Symbol or String is recommended** to avoid load-time issues
   
       *dependent*: Enables deletion cascading.
         **Available values:** ``:delete``, ``:delete_orphans``, ``:destroy``, ``:destroy_orphans``
         (note that the ``:destroy_orphans`` option is known to be "very metal".  Caution advised)
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def has_many(direction, name, options = {}) # rubocop:disable Style/PredicateName
-       validate_association_options!(name, options)
        name = name.to_sym
        build_association(:has_many, direction, name, options)
      
@@ -226,10 +245,9 @@ Methods
   See :ref:`#has_many <Neo4j/ActiveNode/HasN/ClassMethods#has_many>` for anything
   not specified here
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def has_one(direction, name, options = {}) # rubocop:disable Style/PredicateName
-       validate_association_options!(name, options)
        name = name.to_sym
        build_association(:has_one, direction, name, options)
      
@@ -243,7 +261,7 @@ Methods
 **#inherited**
   make sure the inherited classes inherit the <tt>_decl_rels</tt> hash
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def inherited(klass)
        klass.instance_variable_set(:@associations, associations.clone)

@@ -6,6 +6,7 @@ describe Neo4j::ActiveNode::Persistence do
   let(:clazz) do
     Class.new do
       include Neo4j::ActiveNode::Persistence
+      include Neo4j::ActiveNode::Unpersisted
       include Neo4j::ActiveNode::HasN
       include Neo4j::ActiveNode::Property
 
@@ -47,6 +48,7 @@ describe Neo4j::ActiveNode::Persistence do
       node.should_receive(:props).and_return(name: 'kalle2', age: '43')
       session.should_receive(:create_node).with({name: 'kalle', age: 42}, :MyClass).and_return(node)
       clazz.any_instance.should_receive(:init_on_load).with(node, age: '43', name: 'kalle2')
+      allow(Object).to receive(:default_property_values).and_return({})
       o.save
     end
 
@@ -71,6 +73,7 @@ describe Neo4j::ActiveNode::Persistence do
 
     describe 'with cached_class? true' do
       it 'adds a _classname property' do
+        clazz.stub(:default_property_values).and_return({})
         clazz.stub(:cached_class?).and_return(true)
         start_props = {name: 'jasmine', age: 5}
         end_props   = {name: 'jasmine', age: 5, _classname: 'MyClass'}
@@ -90,27 +93,6 @@ describe Neo4j::ActiveNode::Persistence do
 
         o.save
       end
-    end
-  end
-
-  describe 'persisted?' do
-    it 'is true if there is a wrapped node and it has not been deleted' do
-      clazz.any_instance.stub(:_persisted_obj).and_return(node)
-      o = clazz.new
-      node.should_receive(:exist?).and_return(true)
-      o.persisted?.should eq(true)
-    end
-
-    it 'is false if there is a wrapped node and it but it has been deleted' do
-      clazz.any_instance.stub(:_persisted_obj).and_return(node)
-      o = clazz.new
-      node.should_receive(:exist?).and_return(false)
-      o.persisted?.should eq(false)
-    end
-
-    it 'is false if there is not a persisted node' do
-      o = clazz.new
-      o.persisted?.should eq(false)
     end
   end
 
@@ -138,6 +120,26 @@ describe Neo4j::ActiveNode::Persistence do
       o = clazz.new # name not defined
       o.age = '18'
       o.props.should eq(age: 18)
+    end
+  end
+
+  describe 'props_for_create' do
+    let(:node) { clazz.new }
+    before do
+      clazz.send(:include, Neo4j::ActiveNode::IdProperty)
+      clazz.id_property :uuid, auto: :uuid, constraint: false
+      allow(clazz).to receive(:cached_class?).and_return false
+    end
+
+    it 'adds the primary key' do
+      expect(node.props_for_create).to have_key(:uuid)
+    end
+
+    # This is important to be aware of. The UUID will be rebuilt each time it is called.
+    it 'rebuilds each time called, setting a new UUID value' do
+      props1 = node.props_for_create
+      props2 = node.props_for_create
+      expect(props1[:uuid]).not_to eq(props2[:uuid])
     end
   end
 end

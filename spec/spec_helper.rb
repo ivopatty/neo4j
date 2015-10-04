@@ -1,5 +1,10 @@
 # To run coverage via travis
 require 'simplecov'
+require 'dotenv'
+require 'timecop'
+
+Dotenv.load
+
 SimpleCov.start
 if ENV['CI'] == 'true'
   require 'codecov'
@@ -29,7 +34,7 @@ require 'pry' if ENV['APP_ENV'] == 'debug'
 
 
 class MockLogger
-  def info(*_args)
+  def debug(*_args)
   end
 end
 
@@ -104,7 +109,7 @@ module Neo4jSpecHelpers
   class_methods do
     def let_config(var_name)
       before do
-        @neo4j_config_vars         ||= ActiveSupport::HashWithIndifferentAccess.new
+        @neo4j_config_vars ||= ActiveSupport::HashWithIndifferentAccess.new
         @neo4j_config_vars[var_name] = Neo4j::Config[var_name]
         Neo4j::Config[var_name]      = yield
       end
@@ -181,11 +186,20 @@ module ActiveNodeRelStubHelpers
       class << self
         attr_reader :class_name
         alias_method :name, :class_name
+        def to_s
+          name
+        end
       end
 
       module_eval(&block) if block
     end
   end
+end
+
+def before_session
+  Neo4j::Session.current.close if Neo4j::Session.current
+  yield
+  create_session
 end
 
 RSpec.configure do |c|

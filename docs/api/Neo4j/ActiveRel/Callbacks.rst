@@ -44,7 +44,7 @@ Methods
 **#destroy**
   :nodoc:
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def destroy #:nodoc:
        tx = Neo4j::Transaction.new
@@ -65,10 +65,10 @@ Methods
 **#save**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def save(*args)
-       unless self.persisted? || (from_node.respond_to?(:neo_id) && to_node.respond_to?(:neo_id))
+       unless _persisted_obj || (from_node.respond_to?(:neo_id) && to_node.respond_to?(:neo_id))
          fail Neo4j::ActiveRel::Persistence::RelInvalidError, 'from_node and to_node must be node objects'
        end
        super(*args)
@@ -81,7 +81,7 @@ Methods
 **#touch**
   :nodoc:
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def touch(*) #:nodoc:
        run_callbacks(:touch) { super }

@@ -51,6 +51,8 @@ ClassMethods
 
    
 
+   
+
 
 
 
@@ -66,7 +68,7 @@ Files
 
 
 
-  * `lib/neo4j/active_node/labels.rb:80 <https://github.com/neo4jrb/neo4j/blob/master/lib/neo4j/active_node/labels.rb#L80>`_
+  * `lib/neo4j/active_node/labels.rb:79 <https://github.com/neo4jrb/neo4j/blob/master/lib/neo4j/active_node/labels.rb#L79>`_
 
 
 
@@ -82,7 +84,7 @@ Methods
 **#base_class**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def base_class
        unless self < Neo4j::ActiveNode
@@ -103,7 +105,7 @@ Methods
 **#blank?**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def empty?
        !self.all.exists?
@@ -116,12 +118,13 @@ Methods
 **#constraint**
   Creates a neo4j constraint on this class for given property
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def constraint(property, constraints)
        Neo4j::Session.on_session_available do |session|
          unless Neo4j::Label.constraint?(mapped_label_name, property)
            label = Neo4j::Label.create(mapped_label_name)
+           drop_index(property, label) if index?(property)
            label.create_constraint(property, constraints, session)
          end
        end
@@ -134,7 +137,7 @@ Methods
 **#count**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def count(distinct = nil)
        fail(InvalidParameterError, ':count accepts `distinct` or nil as a parameter') unless distinct.nil? || distinct == :distinct
@@ -149,7 +152,7 @@ Methods
 **#delete_all**
   Deletes all nodes and connected relationships from Cypher.
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def delete_all
        self.neo4j_session._query("MATCH (n:`#{mapped_label_name}`) OPTIONAL MATCH n-[r]-() DELETE n,r")
@@ -164,7 +167,7 @@ Methods
   Returns each node to Ruby and calls `destroy`. Be careful, as this can be a very slow operation if you have many nodes. It will generate at least
   one database query per node in the database, more if callbacks require them.
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def destroy_all
        all.each(&:destroy)
@@ -177,13 +180,27 @@ Methods
 **#drop_constraint**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
-     def drop_constraint(property, constraint)
+     def drop_constraint(property, constraint = {type: :unique})
        Neo4j::Session.on_session_available do |session|
          label = Neo4j::Label.create(mapped_label_name)
          label.drop_constraint(property, constraint, session)
        end
+     end
+
+
+
+.. _`Neo4j/ActiveNode/Labels/ClassMethods#drop_index`:
+
+**#drop_index**
+  
+
+  .. code-block:: ruby
+
+     def drop_index(property, label = nil)
+       label_obj = label || Neo4j::Label.create(mapped_label_name)
+       label_obj.drop_index(property)
      end
 
 
@@ -193,7 +210,7 @@ Methods
 **#empty?**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def empty?
        !self.all.exists?
@@ -206,7 +223,7 @@ Methods
 **#exists?**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def exists?(node_condition = nil)
        unless node_condition.is_a?(Integer) || node_condition.is_a?(Hash) || node_condition.nil?
@@ -224,16 +241,18 @@ Methods
 **#find**
   Returns the object with the specified neo4j id.
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def find(id)
        map_id = proc { |object| object.respond_to?(:id) ? object.send(:id) : object }
      
-       if id.is_a?(Array)
-         find_by_ids(id.map { |o| map_id.call(o) })
-       else
-         find_by_id(map_id.call(id))
-       end
+       result =  if id.is_a?(Array)
+                   find_by_ids(id.map { |o| map_id.call(o) })
+                 else
+                   find_by_id(map_id.call(id))
+                 end
+       fail Neo4j::RecordNotFound if result.blank?
+       result
      end
 
 
@@ -243,10 +262,10 @@ Methods
 **#find_by**
   Finds the first record matching the specified conditions. There is no implied ordering so if order matters, you should specify it yourself.
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def find_by(values)
-       all.query_as(:n).where(n: values).limit(1).pluck(:n).first
+       all.where(values).limit(1).query_as(:n).pluck(:n).first
      end
 
 
@@ -256,7 +275,7 @@ Methods
 **#find_by!**
   Like find_by, except that if no record is found, raises a RecordNotFound error.
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def find_by!(values)
        find_by(values) || fail(RecordNotFound, "#{self.query_as(:n).where(n: values).limit(1).to_cypher} returned no results")
@@ -269,7 +288,7 @@ Methods
 **#find_each**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def find_each(options = {})
        self.query_as(:n).return(:n).find_each(:n, primary_key, options) do |batch|
@@ -284,7 +303,7 @@ Methods
 **#find_in_batches**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def find_in_batches(options = {})
        self.query_as(:n).return(:n).find_in_batches(:n, primary_key, options) do |batch|
@@ -299,7 +318,7 @@ Methods
 **#first**
   Returns the first node of this class, sorted by ID. Note that this may not be the first node created since Neo4j recycles IDs.
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def first
        self.query_as(:n).limit(1).order(n: primary_key).pluck(:n).first
@@ -314,10 +333,11 @@ Methods
   
   This can also be done on the property directly, see Neo4j::ActiveNode::Property::ClassMethods#property.
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def index(property, conf = {})
        Neo4j::Session.on_session_available do |_|
+         drop_constraint(property, type: :unique) if Neo4j::Label.constraint?(mapped_label_name, property)
          _index(property, conf)
        end
        indexed_properties.push property unless indexed_properties.include? property
@@ -330,7 +350,7 @@ Methods
 **#index?**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def index?(index_def)
        mapped_label.indexes[:property_keys].include?([index_def])
@@ -343,7 +363,7 @@ Methods
 **#indexed_properties**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def indexed_properties
        @_indexed_properties ||= []
@@ -356,7 +376,7 @@ Methods
 **#last**
   Returns the last node of this class, sorted by ID. Note that this may not be the first node created since Neo4j recycles IDs.
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def last
        self.query_as(:n).limit(1).order(n: {primary_key => :desc}).pluck(:n).first
@@ -369,7 +389,7 @@ Methods
 **#length**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def count(distinct = nil)
        fail(InvalidParameterError, ':count accepts `distinct` or nil as a parameter') unless distinct.nil? || distinct == :distinct
@@ -384,7 +404,7 @@ Methods
 **#mapped_label**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def mapped_label
        Neo4j::Label.create(mapped_label_name)
@@ -397,7 +417,7 @@ Methods
 **#mapped_label_name**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def mapped_label_name
        @mapped_label_name || label_for_model
@@ -410,7 +430,7 @@ Methods
 **#mapped_label_names**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def mapped_label_names
        self.ancestors.find_all { |a| a.respond_to?(:mapped_label_name) }.map { |a| a.mapped_label_name.to_sym }
@@ -423,7 +443,7 @@ Methods
 **#size**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def count(distinct = nil)
        fail(InvalidParameterError, ':count accepts `distinct` or nil as a parameter') unless distinct.nil? || distinct == :distinct

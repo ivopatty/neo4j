@@ -5,6 +5,8 @@ module Neo4j
         include Neo4j::ActiveNode::Query::QueryProxyEnumerable
         include Neo4j::ActiveNode::Query::QueryProxyMethods
         include Neo4j::ActiveNode::Query::QueryProxyFindInBatches
+        include Neo4j::ActiveNode::Query::QueryProxyEagerLoading
+        include Neo4j::ActiveNode::Query::QueryProxyUnpersisted
         include Neo4j::ActiveNode::Dependent::QueryProxyMethods
 
         # The most recent node to start a QueryProxy chain.
@@ -25,11 +27,13 @@ module Neo4j
         # @param [Neo4j::ActiveNode::HasN::Association] association The ActiveNode association (an object created by a <tt>has_one</tt> or
         # <tt>has_many</tt>) that created this object.
         # @param [Hash] options Additional options pertaining to the QueryProxy object. These may include:
-        # * node_var: A string or symbol to be used by Cypher within its query string as an identifier
-        # * rel_var:  Same as above but pertaining to a relationship identifier
-        # * session: The session to be used for this query
-        # * source_object:  The node instance at the start of the QueryProxy chain
-        # * query_proxy: An existing QueryProxy chain upon which this new object should be built
+        # @option options [String, Symbol] :node_var A string or symbol to be used by Cypher within its query string as an identifier
+        # @option options [String, Symbol] :rel_var Same as above but pertaining to a relationship identifier
+        # @option options [Range, Fixnum, Symbol, Hash] :rel_length A Range, a Fixnum, a Hash or a Symbol to indicate the variable-length/fixed-length
+        #   qualifier of the relationship. See http://neo4jrb.readthedocs.org/en/latest/Querying.html#variable-length-relationships.
+        # @option options [Neo4j::Session] :session The session to be used for this query
+        # @option options [Neo4j::ActiveNode] :source_object The node instance at the start of the QueryProxy chain
+        # @option options [QueryProxy] :query_proxy An existing QueryProxy chain upon which this new object should be built
         #
         # QueryProxy objects are evaluated lazily.
         def initialize(model, association = nil, options = {})
@@ -37,9 +41,9 @@ module Neo4j
           @association = association
           @context = options.delete(:context)
           @options = options
+          @associations_spec = []
 
-          @node_var, @session, @source_object, @starting_query, @optional, @start_object, @query_proxy, @chain_level =
-            options.values_at(:node, :session, :source_object, :starting_query, :optional, :start_object, :query_proxy, :chain_level)
+          instance_vars_from_options!(options)
 
           @match_type = @optional ? :optional_match : :match
 
@@ -50,9 +54,7 @@ module Neo4j
         end
 
         def inspect
-          clear, yellow, cyan = %W(\e[0m \e[33m \e[36m)
-
-          "<QueryProxy #{cyan}#{@context}#{clear} CYPHER: #{yellow}#{self.to_cypher.inspect}#{clear}>"
+          "#<QueryProxy #{@context} CYPHER: #{self.to_cypher.inspect}>"
         end
 
         attr_reader :start_object, :query_proxy
@@ -85,9 +87,12 @@ module Neo4j
         # Build a Neo4j::Core::Query object for the QueryProxy. This is necessary when you want to take an existing QueryProxy chain
         # and work with it from the more powerful (but less friendly) Neo4j::Core::Query.
         # @param [String,Symbol] var The identifier to use for node at this link of the QueryProxy chain.
+        #
+        # .. code-block:: ruby
+        #
         #   student.lessons.query_as(:l).with('your cypher here...')
-        def query_as(var, with_label = true)
-          result_query = @chain.inject(base_query(var, with_label).params(@params)) do |query, link|
+        def query_as(var, with_labels = true)
+          result_query = @chain.inject(base_query(var, with_labels).params(@params)) do |query, link|
             args = link.args(var, rel_var)
 
             args.is_a?(Array) ? query.send(link.clause, *args) : query.send(link.clause, args)
@@ -99,19 +104,24 @@ module Neo4j
         def base_query(var, with_labels = true)
           if @association
             chain_var = _association_chain_var
-            (_association_query_start(chain_var) & _query).send(@match_type,
-                                                                "#{chain_var}#{_association_arrow}(#{var}#{_model_label_string})")
+            (_association_query_start(chain_var) & _query).break.send(@match_type,
+                                                                      "#{chain_var}#{_association_arrow}(#{var}#{_model_label_string})")
           else
             starting_query ? (starting_query & _query_model_as(var, with_labels)) : _query_model_as(var, with_labels)
           end
         end
 
-        def _model_label_string
-          return if !@model
+        # param [TrueClass, FalseClass] with_labels This param is used by certain QueryProxy methods that already have the neo_id and
+        # therefore do not need labels.
+        # The @association_labels instance var is set during init and used during association chaining to keep labels out of Cypher queries.
+        def _model_label_string(with_labels = true)
+          return if !@model || (!with_labels || @association_labels == false)
           @model.mapped_label_names.map { |label_name| ":`#{label_name}`" }.join
         end
 
         # Scope all queries to the current scope.
+        #
+        # .. code-block:: ruby
         #
         #   Comment.where(post_id: 1).scoping do
         #     Comment.first
@@ -128,7 +138,7 @@ module Neo4j
           @model.current_scope = previous
         end
 
-        METHODS = %w(where rel_where order skip limit)
+        METHODS = %w(where where_not rel_where order skip limit)
 
         METHODS.each do |method|
           define_method(method) { |*args| build_deeper_query_proxy(method.to_sym, args) }
@@ -139,9 +149,9 @@ module Neo4j
         alias_method :order_by, :order
 
         # Cypher string for the QueryProxy's query. This will not include params. For the full output, see <tt>to_cypher_with_params</tt>.
-        def to_cypher
-          query.to_cypher
-        end
+        delegate :to_cypher, to: :query
+
+        delegate :print_cypher, to: :query
 
         # Returns a string of the cypher query with return objects and params
         # @param [Array] columns array containing symbols of identifiers used in the query
@@ -153,8 +163,7 @@ module Neo4j
 
         # To add a relationship for the node for the association on this QueryProxy
         def <<(other_node)
-          create(other_node, {})
-
+          @start_object._persisted_obj ? create(other_node, {}) : defer_create(other_node)
           self
         end
 
@@ -185,22 +194,12 @@ module Neo4j
           end
         end
 
-        def rels
-          fail 'Cannot get rels without a relationship variable.' if !@rel_var
-
-          pluck(@rel_var)
-        end
-
-        def rel
-          rels.first
-        end
-
         def _nodeify!(*args)
           other_nodes = [args].flatten!.map! do |arg|
-            (arg.is_a?(Integer) || arg.is_a?(String)) ? @model.find_by(@model.id_property_name => arg) : arg
+            (arg.is_a?(Integer) || arg.is_a?(String)) ? @model.find_by(id: arg) : arg
           end.compact
 
-          if @model && other_nodes.any? { |other_node| !other_node.is_a?(@model) }
+          if @model && other_nodes.any? { |other_node| !other_node.class.mapped_label_names.include?(@model.mapped_label_name) }
             fail ArgumentError, "Node must be of the association's class when model is specified"
           end
 
@@ -218,6 +217,8 @@ module Neo4j
           to_a.map { |o| o.read_attribute_for_serialization(*args) }
         end
 
+        delegate :to_ary, to: :to_a
+
         # QueryProxy objects act as a representation of a model at the class level so we pass through calls
         # This allows us to define class functions for reusable query chaining or for end-of-query aggregation/summarizing
         def method_missing(method_name, *args, &block)
@@ -228,14 +229,8 @@ module Neo4j
           end
         end
 
-        def respond_to?(method_name)
-          (@model && @model.respond_to?(method_name)) || super
-        end
-
-        # Give ability to call `#find` on associations to get a scoped find
-        # Doesn't pass through via `method_missing` because Enumerable has a `#find` method
-        def find(*args)
-          scoping { @model.find(*args) }
+        def respond_to_missing?(method_name, include_all = false)
+          (@model && @model.respond_to?(method_name, include_all)) || super
         end
 
         def optional?
@@ -246,6 +241,7 @@ module Neo4j
 
         def new_link(node_var = nil)
           self.clone.tap do |new_query_proxy|
+            new_query_proxy.instance_variable_set('@result_cache', nil)
             new_query_proxy.instance_variable_set('@node_var', node_var) if node_var
           end
         end
@@ -262,7 +258,7 @@ module Neo4j
         end
 
         def _query_model_as(var, with_labels = true)
-          _query.send(@match_type, _match_arg(var, with_labels))
+          _query.break.send(@match_type, _match_arg(var, with_labels))
         end
 
         # @param [String, Symbol] var The Cypher identifier to use within the match string
@@ -288,11 +284,13 @@ module Neo4j
         end
 
         def _session
-          @session || (@model && @model.neo4j_session)
+          (@session || (@model && @model.neo4j_session)).tap do |session|
+            fail 'No session found!' if session.nil?
+          end
         end
 
         def _association_arrow(properties = {}, create = false)
-          @association && @association.arrow_cypher(@rel_var, properties, create)
+          @association && @association.arrow_cypher(@rel_var, properties, create, false, @rel_length)
         end
 
         def _chain_level
@@ -325,9 +323,19 @@ module Neo4j
 
         private
 
+        def instance_vars_from_options!(options)
+          @node_var, @session, @source_object, @starting_query, @optional,
+              @start_object, @query_proxy, @chain_level, @association_labels,
+              @rel_length = options.values_at(:node, :session, :source_object,
+                                              :starting_query, :optional,
+                                              :start_object, :query_proxy,
+                                              :chain_level, :association_labels,
+                                              :rel_length)
+        end
+
         def build_deeper_query_proxy(method, args)
-          new_link.tap do |new_query|
-            Link.for_args(@model, method, args).each { |link| new_query._add_links(link) }
+          new_link.tap do |new_query_proxy|
+            Link.for_args(@model, method, args, association).each { |link| new_query_proxy._add_links(link) }
           end
         end
       end

@@ -47,6 +47,10 @@ Config
 
    
 
+   
+
+   
+
 
 
 
@@ -57,6 +61,8 @@ Constants
 
   * DEFAULT_FILE
 
+  * CLASS_NAME_PROPERTY_KEY
+
 
 
 Files
@@ -64,7 +70,7 @@ Files
 
 
 
-  * `lib/neo4j/config.rb:6 <https://github.com/neo4jrb/neo4j/blob/master/lib/neo4j/config.rb#L6>`_
+  * `lib/neo4j/config.rb:5 <https://github.com/neo4jrb/neo4j/blob/master/lib/neo4j/config.rb#L5>`_
 
 
 
@@ -80,7 +86,7 @@ Methods
 **.[]**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def [](key)
        configuration[key.to_s]
@@ -93,7 +99,7 @@ Methods
 **.[]=**
   Sets the value of a config entry.
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def []=(key, val)
        configuration[key.to_s] = val
@@ -106,7 +112,7 @@ Methods
 **.association_model_namespace**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def association_model_namespace
        Neo4j::Config[:association_model_namespace] || nil
@@ -119,7 +125,7 @@ Methods
 **.association_model_namespace_string**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def association_model_namespace_string
        namespace = Neo4j::Config[:association_model_namespace]
@@ -134,10 +140,10 @@ Methods
 **.class_name_property**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def class_name_property
-       Neo4j::Config[:class_name_property] || :_classname
+       @_class_name_property = Neo4j::Config[CLASS_NAME_PROPERTY_KEY] || :_classname
      end
 
 
@@ -147,7 +153,7 @@ Methods
 **.configuration**
   Reads from the default_file if configuration is not set already
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def configuration
        return @configuration if @configuration
@@ -164,7 +170,7 @@ Methods
 **.default_file**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def default_file
        @default_file ||= DEFAULT_FILE
@@ -177,7 +183,7 @@ Methods
 **.default_file=**
   Sets the location of the configuration YAML file and old deletes configurations.
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def default_file=(file_path)
        delete_all
@@ -192,7 +198,7 @@ Methods
 **.defaults**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def defaults
        require 'yaml'
@@ -206,7 +212,7 @@ Methods
 **.delete**
   Remove the value of a config entry.
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def delete(key)
        configuration.delete(key)
@@ -219,7 +225,7 @@ Methods
 **.delete_all**
   Remove all configuration. This can be useful for testing purpose.
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def delete_all
        @configuration = nil
@@ -232,7 +238,7 @@ Methods
 **.include_root_in_json**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def include_root_in_json
        # we use ternary because a simple || will always evaluate true
@@ -246,10 +252,23 @@ Methods
 **.module_handling**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def module_handling
        Neo4j::Config[:module_handling] || :none
+     end
+
+
+
+.. _`Neo4j/Config.timestamp_type`:
+
+**.timestamp_type**
+  
+
+  .. code-block:: ruby
+
+     def timestamp_type
+       Neo4j::Config[:timestamp_type] || DateTime
      end
 
 
@@ -259,7 +278,7 @@ Methods
 **.to_hash**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def to_hash
        configuration.to_hash
@@ -272,7 +291,7 @@ Methods
 **.to_yaml**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def to_yaml
        configuration.to_yaml
@@ -285,7 +304,7 @@ Methods
 **.use**
   Yields the configuration
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def use
        @configuration ||= ActiveSupport::HashWithIndifferentAccess.new

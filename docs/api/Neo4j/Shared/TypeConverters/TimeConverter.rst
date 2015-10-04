@@ -17,6 +17,12 @@ TimeConverter
 
    
 
+   
+
+   
+
+   
+
 
 
 
@@ -32,7 +38,7 @@ Files
 
 
 
-  * `lib/neo4j/shared/type_converters.rb:54 <https://github.com/neo4jrb/neo4j/blob/master/lib/neo4j/shared/type_converters.rb#L54>`_
+  * `lib/neo4j/shared/type_converters.rb:183 <https://github.com/neo4jrb/neo4j/blob/master/lib/neo4j/shared/type_converters.rb#L183>`_
 
 
 
@@ -43,15 +49,68 @@ Methods
 
 
 
+.. _`Neo4j/Shared/TypeConverters/TimeConverter.call`:
+
+**.call**
+  
+
+  .. code-block:: ruby
+
+     def to_ruby(value)
+       Time.at(value).utc
+     end
+
+
+
 .. _`Neo4j/Shared/TypeConverters/TimeConverter.convert_type`:
 
 **.convert_type**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def convert_type
        Time
+     end
+
+
+
+.. _`Neo4j/Shared/TypeConverters/TimeConverter.converted?`:
+
+**.converted?**
+  
+
+  .. code-block:: ruby
+
+     def converted?(value)
+       value.is_a?(db_type)
+     end
+
+
+
+.. _`Neo4j/Shared/TypeConverters/TimeConverter.db_type`:
+
+**.db_type**
+  
+
+  .. code-block:: ruby
+
+     def db_type
+       Integer
+     end
+
+
+
+.. _`Neo4j/Shared/TypeConverters/TimeConverter.primitive_type`:
+
+**.primitive_type**
+  ActiveAttr, which assists with property management, does not recognize Time as a valid type. We tell it to interpret it as
+  Integer, as it will be when saved to the database.
+
+  .. code-block:: ruby
+
+     def primitive_type
+       Integer
      end
 
 
@@ -62,7 +121,7 @@ Methods
   Converts the given DateTime (UTC) value to an Integer.
   Only utc times are supported !
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def to_db(value)
        if value.class == Date
@@ -79,7 +138,7 @@ Methods
 **.to_ruby**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def to_ruby(value)
        Time.at(value).utc

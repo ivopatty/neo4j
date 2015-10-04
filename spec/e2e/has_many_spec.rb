@@ -35,14 +35,11 @@ describe 'has_many' do
     it { is_expected.to include(:friends, :knows, :knows_me) }
   end
 
+  # See unpersisted_association_spec.rb for more related tests
   describe 'non-persisted node' do
     let(:unsaved_node) { Person.new }
     it 'returns an empty array' do
       expect(unsaved_node.friends).to eq []
-    end
-
-    it 'has a frozen array' do
-      expect { unsaved_node.friends << friend1 }.to raise_error(RuntimeError)
     end
   end
 
@@ -74,19 +71,19 @@ describe 'has_many' do
     it 'creates the correct type' do
       node.friends << friend1
       r = node.rel
-      expect(r.rel_type).to eq(:'FRIENDS')
+      expect(r.rel_type).to eq(:FRIENDS)
     end
 
     it 'creates the correct type' do
       node.knows << friend1
       r = node.rel
-      expect(r.rel_type).to eq(:'KNOWS')
+      expect(r.rel_type).to eq(:KNOWS)
     end
 
     it 'creates correct incoming relationship' do
       node.knows_me << friend1
-      expect(friend1.rel(dir: :outgoing).rel_type).to eq(:'KNOWS')
-      expect(node.rel(dir: :incoming).rel_type).to eq(:'KNOWS')
+      expect(friend1.rel(dir: :outgoing).rel_type).to eq(:KNOWS)
+      expect(node.rel(dir: :incoming).rel_type).to eq(:KNOWS)
     end
   end
 
@@ -392,6 +389,58 @@ describe 'has_many' do
     end
   end
 
+  describe 'variable-length relationship query' do
+    before do
+      node.knows << friend1
+      friend1.knows << friend2
+    end
+
+    context 'as Symbol' do
+      context ':any' do
+        it 'returns any direct or indirect related node' do
+          expect(node.knows(:n, :r, rel_length: :any).to_a).to match_array([friend1, friend2])
+        end
+      end
+    end
+
+    context 'as Fixnum' do
+      it 'returns related nodes at exactly `length` hops from start node' do
+        expect(node.knows(:n, :r, rel_length: 1).to_a).to match_array([friend1])
+        expect(node.knows(:n, :r, rel_length: 2).to_a).to match_array([friend2])
+      end
+    end
+
+    context 'as Range' do
+      it 'returns related nodes within given range of hops from start node' do
+        expect(node.knows(nil, nil, rel_length: (0..3)).to_a).to match_array([node, friend1, friend2])
+        expect(node.knows(nil, nil, rel_length: (1..2)).to_a).to match_array([friend1, friend2])
+        expect(node.knows(nil, nil, rel_length: (2..5)).to_a).to match_array([friend2])
+      end
+    end
+
+    context 'as Hash' do
+      it 'returns related nodes within given range specified by :min/:max options' do
+        expect(node.knows(:n, :r, rel_length: {min: 0, max: 3}).to_a).to match_array([node, friend1, friend2])
+      end
+
+      it 'accepts missing :min OR :max as denoting open-ended ranges' do
+        expect(node.knows(:n, :r, rel_length: {min: 1}).to_a).to match_array([friend1, friend2])
+        expect(node.knows(:n, :r, rel_length: {max: 1}).to_a).to match_array([friend1])
+      end
+    end
+  end
+
+  describe 'association "getter" options' do
+    before do
+      node.knows << friend1
+      friend1.knows << friend2
+    end
+
+    it 'allows passing only a hash of options when naming node/rel is not needed' do
+      expect(node.knows(rel_length: :any).to_a).to match_array([friend1, friend2])
+    end
+  end
+
   describe 'transactions' do
     context 'failure' do
       it 'rolls back <<' do
@@ -487,6 +536,49 @@ describe 'has_many' do
           expect { empty_class.has_many :out, :bars, origin: :foos }.to_not raise_error
           expect(empty_class.associations[:bars].relationship_type).to eq(:barz)
         end
+      end
+    end
+  end
+  describe 'id methods' do
+    before(:each) do
+      stub_active_node_class('Post') do
+        has_many :in, :comments, type: :COMMENTS_ON
+      end
+
+      stub_active_node_class('Comment') do
+        has_one :out, :post, type: :COMMENTS_ON
+      end
+    end
+
+    let(:post) { Post.create }
+    let(:comment) { Comment.create }
+
+    it 'sets IDs for has_many' do
+      post = Post.create
+      comment = Comment.create
+
+      post.comment_ids = [comment.id]
+
+      post = Post.find(post.id)
+      expect(post.comments.to_a).to match_array([comment])
+    end
+
+    it 'sets IDs for has_one' do
+      post = Post.create
+      comment = Comment.create
+
+      comment.post_id = post.id
+
+      comment = Comment.find(comment.id)
+      expect(comment.post).to eq(post)
+    end
+
+    context 'post is set for comment' do
+      before(:each) { comment.post = post }
+
+      it 'returns various IDs for associations' do
+        expect(post.comment_ids).to eq([comment.id])
+        expect(post.comment_neo_ids).to eq([comment.neo_id])
       end
     end
   end

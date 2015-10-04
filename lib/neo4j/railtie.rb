@@ -5,13 +5,18 @@ module Neo4j
   class Railtie < ::Rails::Railtie
     config.neo4j = ActiveSupport::OrderedOptions.new
 
+    if const_defined?(:ActionDispatch)
+      ActionDispatch::Reloader.to_prepare do
+        Neo4j::ActiveNode::Labels::Reloading.reload_models!
+      end
+    end
+
     # Add ActiveModel translations to the I18n load_path
     initializer 'i18n' do
       config.i18n.load_path += Dir[File.join(File.dirname(__FILE__), '..', '..', '..', 'config', 'locales', '*.{rb,yml}')]
     end
 
     rake_tasks do
-      load 'neo4j/tasks/neo4j_server.rake'
       load 'neo4j/tasks/migration.rake'
     end
 
@@ -71,11 +76,19 @@ module Neo4j
     def register_neo4j_cypher_logging
       return if @neo4j_cypher_logging_registered
 
+      Neo4j::Core::Query.pretty_cypher = Neo4j::Config[:pretty_logged_cypher_queries]
+
       Neo4j::Server::CypherSession.log_with do |message|
-        Rails.logger.info message
+        (Neo4j::Config[:logger] || Rails.logger).debug message
       end
 
       @neo4j_cypher_logging_registered = true
+    end
+
+    console do
+      Neo4j::Config[:logger] = ActiveSupport::Logger.new(STDOUT)
+
+      register_neo4j_cypher_logging
     end
 
     # Starting Neo after :load_config_initializers allows apps to
@@ -90,10 +103,8 @@ module Neo4j
       end
       Neo4j::Config.configuration.merge!(cfg.to_hash)
 
-      register_neo4j_cypher_logging
-    end
+      Neo4j::Config[:logger] ||= Rails.logger
 
-    console do
       register_neo4j_cypher_logging
     end
   end

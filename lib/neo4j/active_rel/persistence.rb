@@ -7,26 +7,17 @@ module Neo4j::ActiveRel
     class ModelClassInvalidError < RuntimeError; end
     class RelCreateFailedError < RuntimeError; end
 
-    # Should probably find a way to not need this
-    def association_proxy_cache
-      {}
-    end
-
     def save(*)
-      update_magic_properties
       create_or_update
     end
 
     def save!(*args)
-      fail RelInvalidError, self unless save(*args)
+      save(*args) or fail(RelInvalidError, self) # rubocop:disable Style/AndOr
     end
 
-    def create_model(*)
+    def create_model
       validate_node_classes!
-      create_magic_properties
-      set_timestamps
-      properties = self.class.declared_property_manager.convert_properties_to(self, :db, props)
-      rel = _create_rel(from_node, to_node, properties)
+      rel = _create_rel(from_node, to_node, props_for_create)
       return self unless rel.respond_to?(:_persisted_obj)
       init_on_load(rel._persisted_obj, from_node, to_node, @rel_type)
       true
@@ -47,7 +38,18 @@ module Neo4j::ActiveRel
 
       # Same as #create, but raises an error if there is a problem during save.
       def create!(*args)
-        fail RelInvalidError, self unless create(*args)
+        props = args[0] || {}
+        relationship_props = extract_association_attributes!(props) || {}
+        new(props).tap do |obj|
+          relationship_props.each do |prop, value|
+            obj.send("#{prop}=", value)
+          end
+          obj.save!
+        end
+      end
+
+      def create_method
+        creates_unique? ? :create_unique : :create
       end
     end
 
@@ -58,24 +60,37 @@ module Neo4j::ActiveRel
         type = from_node == node ? :_from_class : :_to_class
         type_class = self.class.send(type)
 
-        next if [:any, false].include?(type_class)
-
-        fail ModelClassInvalidError, "Node class was #{node.class}, expected #{type_class}" unless node.is_a?(type_class.to_s.constantize)
+        unless valid_type?(type_class, node)
+          fail ModelClassInvalidError, type_validation_error_message(node, type_class)
+        end
       end
     end
 
-    def _create_rel(from_node, to_node, *args)
-      props = self.class.default_property_values(self)
-      props.merge!(args[0]) if args[0].is_a?(Hash)
-      set_classname(props, true)
+    def valid_type?(type_object, node)
+      case type_object
+      when false, :any
+        true
+      when Array
+        type_object.any? { |c| valid_type?(c, node) }
+      else
+        node.class.mapped_label_names.include?(type_object.to_s.constantize.mapped_label_name)
+      end
+    end
 
+    def type_validation_error_message(node, type_class)
+      "Node class was #{node.class} (#{node.class.object_id}), expected #{type_class} (#{type_class.object_id})"
+    end
+
+    def _create_rel(from_node, to_node, props = {})
       if from_node.id.nil? || to_node.id.nil?
-        fail RelCreateFailedError, "Unable to create relationship (id is nil). from_node: #{from_node}, to_node: #{to_node}"
+        messages = []
+        messages << 'from_node ID is nil' if from_node.id.nil?
+        messages << 'to_node ID is nil' if to_node.id.nil?
+
+        fail RelCreateFailedError, "Unable to create relationship (#{messages.join(' / ')})"
       end
       _rel_creation_query(from_node, to_node, props)
     end
-
-    private
 
     N1_N2_STRING = 'n1, n2'
     ACTIVEREL_NODE_MATCH_STRING = 'ID(n1) = {n1_neo_id} AND ID(n2) = {n2_neo_id}'
@@ -87,7 +102,7 @@ module Neo4j::ActiveRel
     end
 
     def create_method
-      self.class.unique? ? :create_unique : :create
+      self.class.create_method
     end
   end
 end

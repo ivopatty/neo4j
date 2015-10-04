@@ -6,6 +6,22 @@ module Neo4j
         FIRST = 'HEAD'
         LAST = 'LAST'
 
+        def rels
+          fail 'Cannot get rels without a relationship variable.' if !@rel_var
+
+          pluck(@rel_var)
+        end
+
+        def rel
+          rels.first
+        end
+
+        # Give ability to call `#find` on associations to get a scoped find
+        # Doesn't pass through via `method_missing` because Enumerable has a `#find` method
+        def find(*args)
+          scoping { @model.find(*args) }
+        end
+
         def first(target = nil)
           first_and_last(FIRST, target)
         end
@@ -16,19 +32,23 @@ module Neo4j
 
         def first_and_last(func, target)
           new_query, pluck_proc = if self.query.clause?(:order)
-                                    new_query = self.query.with(identity)
-                                    pluck_proc = proc { |var| "#{func}(COLLECT(#{var})) as #{var}" }
-                                    [new_query, pluck_proc]
+                                    [self.query.with(identity),
+                                     proc { |var| "#{func}(COLLECT(#{var})) as #{var}" }]
                                   else
-                                    new_query = self.order(order).limit(1)
-                                    pluck_proc = proc { |var| var }
-                                    [new_query, pluck_proc]
+                                    [self.order(order_property).limit(1),
+                                     proc { |var| var }]
                                   end
           result = query_with_target(target) do |var|
             final_pluck = pluck_proc.call(var)
             new_query.pluck(final_pluck)
           end
           result.first
+        end
+
+        def order_property
+          # This should maybe be based on a setting in the association
+          # rather than a hardcoded `nil`
+          model ? model.id_property_name : nil
         end
 
         private :first_and_last
@@ -49,7 +69,7 @@ module Neo4j
         # TODO: update this with public API methods if/when they are exposed
         def limit_value
           return unless self.query.clause?(:limit)
-          limit_clause = self.query.send(:clauses).select { |clause| clause.is_a?(Neo4j::Core::QueryClauses::LimitClause) }.first
+          limit_clause = self.query.send(:clauses).find { |clause| clause.is_a?(Neo4j::Core::QueryClauses::LimitClause) }
           limit_clause.instance_variable_get(:@arg)
         end
 
@@ -59,10 +79,18 @@ module Neo4j
 
         alias_method :blank?, :empty?
 
+        # @param [Neo4j::ActiveNode, Neo4j::Node, String] other An instance of a Neo4j.rb model, a Neo4j-core node, or a string uuid
+        # @param [String, Symbol] target An identifier of a link in the Cypher chain
+        # @return [Boolean]
         def include?(other, target = nil)
-          fail(InvalidParameterError, ':include? only accepts nodes') unless other.respond_to?(:neo_id)
           query_with_target(target) do |var|
-            self.where("ID(#{var}) = {other_node_id}").params(other_node_id: other.neo_id).query.return("count(#{var}) as count").first.count > 0
+            where_filter = if other.respond_to?(:neo_id)
+                             "ID(#{var}) = {other_node_id}"
+                           else
+                             "#{var}.#{association_id_key} = {other_node_id}"
+                           end
+            node_id = other.respond_to?(:neo_id) ? other.neo_id : other
+            self.where(where_filter).params(other_node_id: node_id).query.return("count(#{var}) as count").first.count > 0
           end
         end
 
@@ -70,13 +98,13 @@ module Neo4j
           fail(InvalidParameterError, ':exists? only accepts neo_ids') unless node_condition.is_a?(Integer) || node_condition.is_a?(Hash) || node_condition.nil?
           query_with_target(target) do |var|
             start_q = exists_query_start(node_condition, var)
-            start_q.query.return("COUNT(#{var}) AS count").first.count > 0
+            start_q.query.reorder.return("COUNT(#{var}) AS count").first.count > 0
           end
         end
 
         # Deletes a group of nodes and relationships within a QP chain. When identifier is omitted, it will remove the last link in the chain.
         # The optional argument must be a node identifier. A relationship identifier will result in a Cypher Error
-        # @param [String,Symbol] the optional identifier of the link in the chain to delete.
+        # @param identifier [String,Symbol] the optional identifier of the link in the chain to delete.
         def delete_all(identifier = nil)
           query_with_target(identifier) do |target|
             begin
@@ -105,6 +133,7 @@ module Neo4j
                         # support for null object pattern
                         '1 = 2'
                       end
+
           self.where(where_arg)
         end
 
@@ -133,6 +162,7 @@ module Neo4j
 
         # Deletes the relationships between all nodes for the last step in the QueryProxy chain.  Executed in the database, callbacks will not be run.
         def delete_all_rels
+          return unless start_object && start_object._persisted_obj
           self.query.delete(rel_var).exec
         end
 
@@ -143,6 +173,19 @@ module Neo4j
 
           self.delete_all_rels
           nodes.each { |node| self << node }
+        end
+
+        # When called, this method returns a single node that satisfies the match specified in the params hash.
+        # If no existing node is found to satisfy the match, one is created or associated as expected.
+        def find_or_create_by(params)
+          fail 'Method invalid when called on Class objects' unless source_object
+          result = self.where(params).first
+          return result unless result.nil?
+          Neo4j::Transaction.run do
+            node = model.find_or_create_by(params)
+            self << node
+            return node
+          end
         end
 
         # Returns all relationships between a node and its last link in the QueryProxy chain, destroys them in Ruby. Callbacks will be run.
@@ -160,6 +203,9 @@ module Neo4j
         # So for a `Teacher` model inheriting from a `Person` model and an `Article` model
         # if you called .as_models([Teacher, Article])
         # The where clause would look something like:
+        #
+        # .. code-block:: cypher
+        #
         #   WHERE (node_var:Teacher:Person OR node_var:Article)
         def as_models(models)
           where_clause = models.map do |model|

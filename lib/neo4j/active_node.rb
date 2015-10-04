@@ -36,6 +36,7 @@ module Neo4j
     include Neo4j::ActiveNode::Query
     include Neo4j::ActiveNode::Labels
     include Neo4j::ActiveNode::Rels
+    include Neo4j::ActiveNode::Unpersisted
     include Neo4j::ActiveNode::HasN
     include Neo4j::ActiveNode::Scope
     include Neo4j::ActiveNode::Dependent
@@ -44,7 +45,18 @@ module Neo4j
       _persisted_obj || fail('Tried to access native neo4j object on a non persisted object')
     end
 
+    def inspect
+      id_property_name = self.class.id_property_name.to_s
+      attribute_pairs = attributes.except(id_property_name).sort.map { |key, value| "#{key}: #{value.inspect}" }
+      attribute_pairs.unshift("#{id_property_name}: #{self.send(id_property_name).inspect}")
+      attribute_descriptions = attribute_pairs.join(', ')
+      separator = ' ' unless attribute_descriptions.empty?
+      "#<#{self.class.name}#{separator}#{attribute_descriptions}>"
+    end
+
     included do
+      include Neo4j::Timestamps if Neo4j::Config[:record_timestamps]
+
       def self.inherited(other)
         inherit_id_property(other)
         inherited_indexes(other) if self.respond_to?(:indexed_properties)
@@ -66,7 +78,7 @@ module Neo4j
 
       def self.inherit_id_property(other)
         Neo4j::Session.on_session_available do |_|
-          return unless self.id_property?
+          next if other.manual_id_property? || !self.id_property?
           id_prop = self.id_property_info
           conf = id_prop[:type].empty? ? {auto: :uuid} : id_prop[:type]
           other.id_property id_prop[:name], conf
@@ -74,6 +86,7 @@ module Neo4j
       end
 
       Neo4j::Session.on_session_available do |_|
+        next if manual_id_property?
         id_property :uuid, auto: :uuid unless self.id_property?
 
         name = Neo4j::Config[:id_property]

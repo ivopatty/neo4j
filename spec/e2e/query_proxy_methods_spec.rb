@@ -44,6 +44,34 @@ describe 'query_proxy_methods' do
   let!(:mr_jones) { Teacher.create }
   let!(:mr_adams) { Teacher.create }
 
+  describe 'find_or_create_by' do
+    let(:emily)       { Student.create(name: 'Emily') }
+    let(:philosophy)  { Lesson.create(name: 'philosophy') }
+    before do
+      philosophy.students << jimmy
+    end
+
+    it 'returns the correct node if it can be found' do
+      expect(philosophy.students.find_or_create_by(name: jimmy.name)).to eq(jimmy)
+    end
+
+    it 'creates and associates a new node if one is not found' do
+      expect(philosophy.students.where(name: 'Rebecca').blank?).to be_truthy
+      expect { philosophy.students.find_or_create_by(name: 'Rebecca') }.to change { Student.all.count }
+      expect(philosophy.students.where(name: 'Rebecca').blank?).to be_falsey
+    end
+
+    it 'returns the node after creating' do
+      expect(philosophy.students.find_or_create_by(name: 'Jacob')).to be_a(Neo4j::ActiveNode)
+    end
+
+    it 'creates the relationship if the node exists but is not association' do
+      expect(philosophy.students.include?(emily)).to be_falsey
+      expect { philosophy.students.find_or_create_by(name: 'Emily') }.not_to change { Student.all.count }
+      expect(philosophy.students.include?(emily)).to be_truthy
+    end
+  end
+
   describe 'first and last' do
     it 'returns objects across multiple associations' do
       jimmy.lessons << science
@@ -86,8 +114,10 @@ describe 'query_proxy_methods' do
       expect(Lesson.as(:l).students.where(name: 'Jimmy').include?(science, :l)).to be_truthy
     end
 
-    it 'raises an error if something other than a node is given' do
-      expect { Student.lessons.include?(:foo) }.to raise_error(Neo4j::ActiveNode::Query::QueryProxyMethods::InvalidParameterError)
+    it 'can find by primary key/uuid' do
+      expect(jimmy.lessons.include?(science.uuid)).to be_falsey
+      jimmy.lessons << science
+      expect(jimmy.lessons.include?(science.uuid)).to be_truthy
     end
   end
 
@@ -96,6 +126,10 @@ describe 'query_proxy_methods' do
       it 'can run by a class' do
         expect(EmptyClass.empty?).to be_truthy
         expect(Lesson.empty?).to be_falsey
+      end
+
+      it 'does not fail from an ordered context' do
+        expect(Lesson.order(:name).empty?).to be_falsey
       end
 
       it 'can be called with a property and value' do
@@ -137,6 +171,11 @@ describe 'query_proxy_methods' do
         jimmy.lessons << science
         expect(jimmy.lessons.blank?).to be_falsey
         expect(jimmy.lessons.empty?).to be_falsey
+      end
+
+      it 'does not fail from an ordered context' do
+        expect(jimmy.lessons.order(:name).blank?).to be_truthy
+        expect(jimmy.lessons.order(:name).empty?).to be_truthy
       end
     end
   end
@@ -216,8 +255,8 @@ describe 'query_proxy_methods' do
       it 'removes the last link in the QueryProxy chain' do
         expect(@tom.lessons.teachers.include?(@adams)).to be_truthy
         @tom.lessons.teachers.delete_all
-        expect(@adams.persisted?).to be_falsey
-        expect(@johnson.persisted?).to be_falsey
+        expect(@adams.exist?).to be_falsey
+        expect(@johnson.exist?).to be_falsey
         expect(@tom.lessons.teachers).to be_empty
       end
 
@@ -230,13 +269,13 @@ describe 'query_proxy_methods' do
       it 'works when called from a class' do
         expect(@tom.lessons.teachers.include?(@adams)).to be_truthy
         Student.all.lessons.teachers.delete_all
-        expect(@adams.persisted?).to be_falsey
+        expect(@adams.exist?).to be_falsey
       end
 
       it 'can target a specific identifier' do
         @tom.lessons(:l).teachers.where(name: 'Mr Adams').delete_all(:l)
         expect(@tom.lessons.include?(@math)).to be_falsey
-        expect(@math).not_to be_persisted
+        expect(@math.exist?).to be false
         expect(@tom.lessons.include?(@science)).to be_truthy
       end
 
@@ -275,7 +314,7 @@ describe 'query_proxy_methods' do
 
       context 'with a valid node' do
         it 'generates a match to the given node' do
-          expect(@john.lessons.match_to(@history).to_cypher).to include('AND (ID(result_lessons) =')
+          expect(@john.lessons.match_to(@history).to_cypher).to include('WHERE (ID(result_lessons) =')
         end
 
         it 'matches the object' do
@@ -285,7 +324,7 @@ describe 'query_proxy_methods' do
 
       context 'with an id' do
         it 'generates cypher using the primary key' do
-          expect(@john.lessons.match_to(@history.id).to_cypher).to include('AND (result_lessons.uuid =')
+          expect(@john.lessons.match_to(@history.id).to_cypher).to include('WHERE (result_lessons.uuid =')
         end
 
         it 'matches' do
@@ -303,7 +342,7 @@ describe 'query_proxy_methods' do
             expect(@john.lessons.match_to([@history, @math]).to_cypher).to include('ID(result_lessons) IN')
             expect(@john.lessons.match_to([@history, @math]).to_a).to eq [@history]
             @john.lessons << @math
-            expect(@john.lessons.match_to([@history, @math]).to_a.count).to eq 2
+            expect(@john.lessons.match_to([@history, @math]).to_a.size).to eq 2
             expect(@john.lessons.match_to([@history, @math]).to_a).to include(@history, @math)
           end
         end
@@ -317,7 +356,7 @@ describe 'query_proxy_methods' do
 
       context 'with a null object' do
         it 'generates cypher with 1 = 2' do
-          expect(@john.lessons.match_to(nil).to_cypher).to include('AND (1 = 2')
+          expect(@john.lessons.match_to(nil).to_cypher).to include('WHERE (1 = 2')
         end
 
         it 'matches nil' do

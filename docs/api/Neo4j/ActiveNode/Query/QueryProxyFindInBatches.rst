@@ -46,11 +46,11 @@ Methods
 **#find_each**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def find_each(options = {})
        query.return(identity).find_each(identity, @model.primary_key, options) do |result|
-         yield result
+         yield result.send(identity)
        end
      end
 
@@ -61,11 +61,11 @@ Methods
 **#find_in_batches**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def find_in_batches(options = {})
        query.return(identity).find_in_batches(identity, @model.primary_key, options) do |batch|
-         yield batch
+         yield batch.map(&:identity)
        end
      end
 

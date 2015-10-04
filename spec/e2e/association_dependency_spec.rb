@@ -29,7 +29,7 @@ describe 'association dependent delete/destroy' do
 
     stub_active_node_class('Route') do
       property :name
-      has_one :in,  :tour,  model_class: 'Tour', origin: :routes
+      has_one :in, :tour, model_class: 'Tour', origin: :routes
       has_many :out, :stops, model_class: 'Stop', type: 'STOPS_AT', dependent: :destroy_orphans
       has_many :out, :comments, model_class: 'Comment', type: 'HAS_COMMENT', dependent: :destroy
     end
@@ -87,6 +87,27 @@ describe 'association dependent delete/destroy' do
     @route2.stops << [@philadelphia, @manhattan, @boston]
   end
 
+  describe 'basic destruction' do
+    let(:node) { User.create }
+
+    context 'a node without relationships' do
+      it 'quits out of the process without performing an expensive match' do
+        expect_any_instance_of(Neo4j::ActiveNode::Query::QueryProxy).not_to receive(:unique_nodes_query)
+        node.destroy
+      end
+    end
+
+    context 'a node with relationshpis' do
+      let(:band) { Band.create }
+      before { node.bands << band }
+
+      it 'continues as normal' do
+        expect_any_instance_of(Neo4j::ActiveNode::Query::QueryProxy).to receive(:unique_nodes_query).and_call_original
+        node.destroy
+      end
+    end
+  end
+
   describe 'Grzesiek is booking a tour for his bands' do
     before(:each) do
       delete_db
@@ -135,8 +156,8 @@ describe 'association dependent delete/destroy' do
           expect { @route2.destroy }.not_to raise_error
           expect(@philadelphia).to be_persisted
 
-          expect(@manhattan).not_to be_persisted
-          expect(@boston).not_to be_persisted
+          expect(@manhattan.exist?).to be false
+          expect(@boston.exist?).to be false
         end
 
         it 'destroys the linked comment without everything blowing up' do

@@ -51,6 +51,7 @@ describe 'declared property classes' do
         include Neo4j::ActiveNode
         property :foo
         property :bar, type: String, default: 'foo'
+        property :baz, type: ActiveAttr::Typecasting::Boolean, default: false
       end
 
       stub_const('MyModel', clazz)
@@ -79,6 +80,33 @@ describe 'declared property classes' do
       expect(dpm.attributes_nil_hash).to have_key('bar')
     end
 
+    describe 'inheritance' do
+      before do
+        clazz = Class.new do
+          include Neo4j::ActiveNode
+          property :foo
+          property :bar, type: String, default: 'foo'
+        end
+
+        stub_const('MyModel', clazz)
+
+        clazz = Class.new(MyModel) do
+          include Neo4j::ActiveNode
+        end
+
+        stub_const('MyInheritedClass', clazz)
+      end
+
+      let(:dpm) { MyModel.declared_property_manager }
+      let(:inherited_dpm) { MyInheritedClass.declared_property_manager }
+
+      it 'applies the ancestor\'s props' do
+        dpm.registered_properties.each_key do |k|
+          expect(inherited_dpm.registered_properties).to have_key(k)
+        end
+      end
+    end
+
     # This mimics the behavior of active_attr's default property values
     describe 'default property values' do
       let(:node) { MyModel.new }
@@ -87,26 +115,52 @@ describe 'declared property classes' do
         expect(node.bar).to eq 'foo'
       end
 
-      describe 'with changed values' do
+      context 'with type: Boolean and default: false' do
+        it 'sets as expected' do
+          expect(node.baz).to eq false
+        end
+      end
+
+      context 'with value not default, not updated' do
+        before do
+          node.bar = 'bar'
+          node.save
+          node.reload
+          node.foo = 'foo'
+          node.save
+          node.reload
+        end
+
+        it 'does not reset' do
+          expect(node.bar).to eq 'bar'
+        end
+      end
+
+      context 'with changed values' do
         before do
           node.bar = value
+          node.baz = bool_value
           node.save
           node.reload
         end
 
         context 'on reload when prop was changed to nil' do
           let(:value) { nil }
+          let(:bool_value) { nil }
 
           it 'resets nil default properties on reload' do
             expect(node.bar).to eq 'foo'
+            expect(node.baz).to eq false
           end
         end
 
         context 'on reload when prop was set' do
           let(:value) { 'bar' }
+          let(:bool_value) { true }
 
           it 'does not reset to default' do
             expect(node.bar).to eq 'bar'
+            expect(node.baz).to eq true
           end
         end
       end

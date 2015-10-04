@@ -52,7 +52,7 @@ Methods
 **#found**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def found(record, attribute, value)
        conditions = scope_conditions(record)
@@ -63,7 +63,7 @@ Methods
        conditions[attribute] = options[:case_sensitive] ? value : /^#{Regexp.escape(value.to_s)}$/i
      
        found = record.class.as(:result).where(conditions)
-       found = found.where('ID(result) <> {record_neo_id}').params(record_neo_id: record.neo_id) if record.persisted?
+       found = found.where('ID(result) <> {record_neo_id}').params(record_neo_id: record.neo_id) if record._persisted_obj
        found
      end
 
@@ -74,7 +74,7 @@ Methods
 **#initialize**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def initialize(options)
        super(options.reverse_merge(case_sensitive: true))
@@ -87,7 +87,7 @@ Methods
 **#message**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def message(instance)
        super || 'has already been taken'
@@ -100,7 +100,7 @@ Methods
 **#scope_conditions**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def scope_conditions(instance)
        Array(options[:scope] || []).inject({}) do |conditions, key|
@@ -115,7 +115,7 @@ Methods
 **#validate_each**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def validate_each(record, attribute, value)
        return unless found(record, attribute, value).exists?

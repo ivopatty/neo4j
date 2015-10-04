@@ -17,6 +17,8 @@ Converts hash to/from YAML
 
    
 
+   
+
 
 
 
@@ -32,7 +34,7 @@ Files
 
 
 
-  * `lib/neo4j/shared/type_converters.rb:77 <https://github.com/neo4jrb/neo4j/blob/master/lib/neo4j/shared/type_converters.rb#L77>`_
+  * `lib/neo4j/shared/type_converters.rb:217 <https://github.com/neo4jrb/neo4j/blob/master/lib/neo4j/shared/type_converters.rb#L217>`_
 
 
 
@@ -48,10 +50,36 @@ Methods
 **.convert_type**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def convert_type
        Hash
+     end
+
+
+
+.. _`Neo4j/Shared/TypeConverters/YAMLConverter.converted?`:
+
+**.converted?**
+  
+
+  .. code-block:: ruby
+
+     def converted?(value)
+       value.is_a?(db_type)
+     end
+
+
+
+.. _`Neo4j/Shared/TypeConverters/YAMLConverter.db_type`:
+
+**.db_type**
+  
+
+  .. code-block:: ruby
+
+     def db_type
+       String
      end
 
 
@@ -61,7 +89,7 @@ Methods
 **.to_db**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def to_db(value)
        Psych.dump(value)
@@ -74,7 +102,7 @@ Methods
 **.to_ruby**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def to_ruby(value)
        Psych.load(value)

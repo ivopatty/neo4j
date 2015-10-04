@@ -6,10 +6,12 @@ module Neo4j
       class Association
         include Neo4j::Shared::RelTypeConverters
         include Neo4j::ActiveNode::Dependent::AssociationMethods
-        attr_reader :type, :name, :relationship, :direction, :dependent
+        include Neo4j::ActiveNode::HasN::AssociationCypherMethods
 
-        def initialize(type, direction, name, options = {})
-          validate_init_arguments(type, direction, options)
+        attr_reader :type, :name, :relationship, :direction, :dependent, :model_class
+
+        def initialize(type, direction, name, options = {type: nil})
+          validate_init_arguments(type, direction, name, options)
           @type = type.to_sym
           @name = name
           @direction = direction.to_sym
@@ -17,39 +19,67 @@ module Neo4j
           apply_vars_from_options(options)
         end
 
+        def derive_model_class
+          refresh_model_class! if pending_model_refresh?
+          return @model_class unless @model_class.nil?
+          return nil if relationship_class.nil?
+          dir_class = direction == :in ? :from_class : :to_class
+          return false if relationship_class.send(dir_class).to_s.to_sym == :any
+          relationship_class.send(dir_class)
+        end
+
+        def refresh_model_class!
+          @pending_model_refresh = @target_classes_or_nil = nil
+
+          # Using #to_s on purpose here to take care of classes/strings/symbols
+          @model_class = @model_class.to_s.constantize if @model_class
+        end
+
+        def queue_model_refresh!
+          @pending_model_refresh = true
+        end
+
         def target_class_option(model_class)
           case model_class
           when nil
-            if @target_class_name_from_name
-              "#{association_model_namespace}::#{@target_class_name_from_name}"
-            else
-              @target_class_name_from_name
-            end
+            @target_class_name_from_name ? "#{association_model_namespace}::#{@target_class_name_from_name}" : @target_class_name_from_name
           when Array
             model_class.map { |sub_model_class| target_class_option(sub_model_class) }
           when false
             false
           else
-            "::#{model_class}"
+            model_class.to_s[0, 2] == '::' ? model_class.to_s : "::#{model_class}"
           end
         end
 
-        # Return cypher partial query string for the relationship part of a MATCH (arrow / relationship definition)
-        def arrow_cypher(var = nil, properties = {}, create = false, reverse = false)
-          validate_origin!
-          direction_cypher(get_relationship_cypher(var, properties, create), create, reverse)
+        def pending_model_refresh?
+          !!@pending_model_refresh
         end
 
         def target_class_names
-          @target_class_names ||= if @target_class_option.is_a?(Array)
-                                    @target_class_option.map(&:to_s)
-                                  elsif @target_class_option
-                                    [@target_class_option.to_s]
+          option = target_class_option(derive_model_class)
+
+          @target_class_names ||= if option.is_a?(Array)
+                                    option.map(&:to_s)
+                                  elsif option
+                                    [option.to_s]
                                   end
+        end
+
+        def target_classes
+          target_class_names.map(&:constantize)
         end
 
         def target_classes_or_nil
           @target_classes_or_nil ||= discovered_model if target_class_names
+        end
+
+        def target_where_clause
+          return if model_class == false
+
+          Array.new(target_classes).map do |target_class|
+            "#{name}:#{target_class.mapped_label_name}"
+          end.join(' OR ')
         end
 
         def discovered_model
@@ -77,9 +107,9 @@ module Neo4j
 
         def relationship_type(create = false)
           case
-          when @relationship_class
+          when relationship_class
             relationship_class_type
-          when @relationship_type
+          when !@relationship_type.nil?
             @relationship_type
           when @origin
             origin_type
@@ -88,34 +118,24 @@ module Neo4j
           end
         end
 
-        attr_reader :relationship_class
+        attr_reader :relationship_class_name
 
         def relationship_class_type
-          @relationship_class = @relationship_class.constantize if @relationship_class.class == String || @relationship_class == Symbol
-          @relationship_class._type.to_sym
+          relationship_class._type.to_sym
         end
 
-        def relationship_class_name
-          @relationship_class_name ||= @relationship_class.respond_to?(:constantize) ? @relationship_class : @relationship_class.name
-        end
-
-        def relationship_clazz
-          @relationship_clazz ||= if @relationship_class.is_a?(String)
-                                    @relationship_class.constantize
-                                  elsif @relationship_class.is_a?(Symbol)
-                                    @relationship_class.to_s.constantize
-                                  else
-                                    @relationship_class
-                                  end
+        def relationship_class
+          @relationship_class ||= @relationship_class_name && @relationship_class_name.constantize
         end
 
         def inject_classname(properties)
-          return properties unless @relationship_class
-          properties[Neo4j::Config.class_name_property] = relationship_class_name if relationship_clazz.cached_class?(true)
+          return properties unless relationship_class
+          properties[Neo4j::Config.class_name_property] = relationship_class_name if relationship_class.cached_class?(true)
           properties
         end
 
         def unique?
+          return relationship_class.unique? if rel_class?
           @origin ? origin_association.unique? : !!@unique
         end
 
@@ -123,21 +143,15 @@ module Neo4j
           unique? ? :create_unique : :create
         end
 
+        def relationship_class?
+          !!relationship_class
+        end
+        alias_method :rel_class?, :relationship_class?
+
         private
 
         def association_model_namespace
           Neo4j::Config.association_model_namespace_string
-        end
-
-        def direction_cypher(relationship_cypher, create, reverse = false)
-          case get_direction(create, reverse)
-          when :out
-            "-#{relationship_cypher}->"
-          when :in
-            "<-#{relationship_cypher}-"
-          when :both
-            "-#{relationship_cypher}-"
-          end
         end
 
         def get_direction(create, reverse = false)
@@ -153,21 +167,6 @@ module Neo4j
           end
         end
 
-        def get_relationship_cypher(var, properties, create)
-          relationship_type = relationship_type(create)
-          relationship_name_cypher = ":`#{relationship_type}`" if relationship_type
-          properties_string = get_properties_string(properties)
-
-          "[#{var}#{relationship_name_cypher}#{properties_string}]"
-        end
-
-        def get_properties_string(properties)
-          p = properties.map do |key, value|
-            "#{key}: #{value.inspect}"
-          end.join(', ')
-          p.size == 0 ? '' : " {#{p}}"
-        end
-
         def origin_association
           target_class.associations[@origin]
         end
@@ -179,11 +178,12 @@ module Neo4j
         private
 
         def apply_vars_from_options(options)
-          @target_class_option = target_class_option(options[:model_class])
+          @relationship_class_name = options[:rel_class] && options[:rel_class].to_s
+          @relationship_type = options[:type] && options[:type].to_sym
+
+          @model_class = options[:model_class]
           @callbacks = {before: options[:before], after: options[:after]}
           @origin = options[:origin] && options[:origin].to_sym
-          @relationship_class = options[:rel_class]
-          @relationship_type  = options[:type] && options[:type].to_sym
           @dependent = options[:dependent].try(:to_sym)
           @unique = options[:unique]
         end
@@ -195,10 +195,27 @@ module Neo4j
           "#{type} #{direction.inspect}, #{name.inspect}"
         end
 
-        def validate_init_arguments(type, direction, options)
+        def validate_init_arguments(type, direction, name, options)
+          validate_association_options!(name, options)
           validate_option_combinations(options)
           validate_dependent(options[:dependent].try(:to_sym))
           check_valid_type_and_dir(type, direction)
+        end
+
+        VALID_ASSOCIATION_OPTION_KEYS = [:type, :origin, :model_class, :rel_class, :dependent, :before, :after, :unique]
+
+        def validate_association_options!(_association_name, options)
+          type_keys = (options.keys & [:type, :origin, :rel_class])
+          message = case
+                    when type_keys.size > 1
+                      "Only one of 'type', 'origin', or 'rel_class' options are allowed for associations"
+                    when type_keys.empty?
+                      "The 'type' option must be specified( even if it is `nil`) or `origin`/`rel_class` must be specified"
+                    when (unknown_keys = options.keys - VALID_ASSOCIATION_OPTION_KEYS).size > 0
+                      "Unknown option(s) specified: #{unknown_keys.join(', ')}"
+                    end
+
+          fail ArgumentError, message if message
         end
 
         def check_valid_type_and_dir(type, direction)

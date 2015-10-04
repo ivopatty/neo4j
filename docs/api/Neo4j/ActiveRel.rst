@@ -18,9 +18,13 @@ See documentation at https://github.com/neo4jrb/neo4j/wiki/Neo4j%3A%3AActiveRel
 
    
 
-   ActiveRel/Types
+   
+
+   
 
    ActiveRel/Query
+
+   ActiveRel/Types
 
    ActiveRel/Property
 
@@ -28,9 +32,9 @@ See documentation at https://github.com/neo4jrb/neo4j/wiki/Neo4j%3A%3AActiveRel
 
    ActiveRel/Initialize
 
-   ActiveRel/Persistence
-
    ActiveRel/Validations
+
+   ActiveRel/Persistence
 
    ActiveRel/RelatedNode
 
@@ -59,9 +63,9 @@ Files
 
   * `lib/neo4j/active_rel.rb:4 <https://github.com/neo4jrb/neo4j/blob/master/lib/neo4j/active_rel.rb#L4>`_
 
-  * `lib/neo4j/active_rel/types.rb:2 <https://github.com/neo4jrb/neo4j/blob/master/lib/neo4j/active_rel/types.rb#L2>`_
-
   * `lib/neo4j/active_rel/query.rb:1 <https://github.com/neo4jrb/neo4j/blob/master/lib/neo4j/active_rel/query.rb#L1>`_
+
+  * `lib/neo4j/active_rel/types.rb:2 <https://github.com/neo4jrb/neo4j/blob/master/lib/neo4j/active_rel/types.rb#L2>`_
 
   * `lib/neo4j/active_rel/property.rb:1 <https://github.com/neo4jrb/neo4j/blob/master/lib/neo4j/active_rel/property.rb#L1>`_
 
@@ -69,9 +73,9 @@ Files
 
   * `lib/neo4j/active_rel/initialize.rb:1 <https://github.com/neo4jrb/neo4j/blob/master/lib/neo4j/active_rel/initialize.rb#L1>`_
 
-  * `lib/neo4j/active_rel/persistence.rb:1 <https://github.com/neo4jrb/neo4j/blob/master/lib/neo4j/active_rel/persistence.rb#L1>`_
-
   * `lib/neo4j/active_rel/validations.rb:2 <https://github.com/neo4jrb/neo4j/blob/master/lib/neo4j/active_rel/validations.rb#L2>`_
+
+  * `lib/neo4j/active_rel/persistence.rb:1 <https://github.com/neo4jrb/neo4j/blob/master/lib/neo4j/active_rel/persistence.rb#L1>`_
 
   * `lib/neo4j/active_rel/related_node.rb:1 <https://github.com/neo4jrb/neo4j/blob/master/lib/neo4j/active_rel/related_node.rb#L1>`_
 
@@ -89,7 +93,7 @@ Methods
 **#==**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def ==(other)
        other.class == self.class && other.id == id
@@ -102,7 +106,7 @@ Methods
 **#[]**
   Returning nil when we get ActiveAttr::UnknownAttributeError from ActiveAttr
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def read_attribute(name)
        super(name)
@@ -112,12 +116,44 @@ Methods
 
 
 
+.. _`Neo4j/ActiveRel#_active_record_destroyed_behavior?`:
+
+**#_active_record_destroyed_behavior?**
+  
+
+  .. code-block:: ruby
+
+     def _active_record_destroyed_behavior?
+       fail 'Remove this workaround in 6.0.0' if Neo4j::VERSION >= '6.0.0'
+     
+       !!Neo4j::Config[:_active_record_destroyed_behavior]
+     end
+
+
+
+.. _`Neo4j/ActiveRel#_destroyed_double_check?`:
+
+**#_destroyed_double_check?**
+  These two methods should be removed in 6.0.0
+
+  .. code-block:: ruby
+
+     def _destroyed_double_check?
+       if _active_record_destroyed_behavior?
+         false
+       else
+         (!new_record? && !exist?)
+       end
+     end
+
+
+
 .. _`Neo4j/ActiveRel#_persisted_obj`:
 
 **#_persisted_obj**
   Returns the value of attribute _persisted_obj
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def _persisted_obj
        @_persisted_obj
@@ -130,7 +166,7 @@ Methods
 **#apply_default_values**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def apply_default_values
        return if self.class.declared_property_defaults.empty?
@@ -141,25 +177,12 @@ Methods
 
 
 
-.. _`Neo4j/ActiveRel#association_proxy_cache`:
-
-**#association_proxy_cache**
-  Should probably find a way to not need this
-
-  .. hidden-code-block:: ruby
-
-     def association_proxy_cache
-       {}
-     end
-
-
-
 .. _`Neo4j/ActiveRel#cache_key`:
 
 **#cache_key**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def cache_key
        if self.new_record?
@@ -178,52 +201,10 @@ Methods
 **#declared_property_manager**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def declared_property_manager
        self.class.declared_property_manager
-     end
-
-
-
-.. _`Neo4j/ActiveRel#default_properties`:
-
-**#default_properties**
-  
-
-  .. hidden-code-block:: ruby
-
-     def default_properties
-       @default_properties ||= Hash.new(nil)
-       # keys = self.class.default_properties.keys
-       # _persisted_obj.props.reject{|key| !keys.include?(key)}
-     end
-
-
-
-.. _`Neo4j/ActiveRel#default_properties=`:
-
-**#default_properties=**
-  
-
-  .. hidden-code-block:: ruby
-
-     def default_properties=(properties)
-       default_property_keys = self.class.default_properties_keys
-       @default_properties = properties.select { |key| default_property_keys.include?(key) }
-     end
-
-
-
-.. _`Neo4j/ActiveRel#default_property`:
-
-**#default_property**
-  
-
-  .. hidden-code-block:: ruby
-
-     def default_property(key)
-       default_properties[key.to_sym]
      end
 
 
@@ -233,7 +214,7 @@ Methods
 **#destroy**
   :nodoc:
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def destroy #:nodoc:
        tx = Neo4j::Transaction.new
@@ -254,10 +235,10 @@ Methods
 **#destroyed?**
   Returns +true+ if the object was destroyed.
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def destroyed?
-       @_deleted || (!new_record? && !exist?)
+       @_deleted || _destroyed_double_check?
      end
 
 
@@ -267,7 +248,7 @@ Methods
 **#end_node**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      alias_method :end_node,   :to_node
 
@@ -278,7 +259,7 @@ Methods
 **#eql?**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def ==(other)
        other.class == self.class && other.id == id
@@ -291,7 +272,7 @@ Methods
 **#exist?**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def exist?
        _persisted_obj && _persisted_obj.exist?
@@ -304,7 +285,7 @@ Methods
 **#freeze**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def freeze
        @attributes.freeze
@@ -313,12 +294,23 @@ Methods
 
 
 
+.. _`Neo4j/ActiveRel#from_node_neo_id`:
+
+**#from_node_neo_id**
+  
+
+  .. code-block:: ruby
+
+     alias_method :from_node_neo_id, :start_node_neo_id
+
+
+
 .. _`Neo4j/ActiveRel#frozen?`:
 
 **#frozen?**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def frozen?
        @attributes.frozen?
@@ -331,7 +323,7 @@ Methods
 **#hash**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def hash
        id.hash
@@ -344,7 +336,7 @@ Methods
 **#id**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def id
        id = neo_id
@@ -358,16 +350,14 @@ Methods
 **#init_on_load**
   called when loading the rel from the database
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def init_on_load(persisted_rel, from_node_id, to_node_id, type)
-       @_persisted_obj = persisted_rel
        @rel_type = type
+       @_persisted_obj = persisted_rel
        changed_attributes && changed_attributes.clear
-       @attributes = attributes.merge(persisted_rel.props.stringify_keys)
+       @attributes = convert_and_assign_attributes(persisted_rel.props)
        load_nodes(from_node_id, to_node_id)
-       self.default_properties = persisted_rel.props
-       @attributes = self.class.declared_property_manager.convert_properties_to(self, :ruby, @attributes)
      end
 
 
@@ -377,11 +367,29 @@ Methods
 **#initialize**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def initialize(*args)
        load_nodes
        super
+     end
+
+
+
+.. _`Neo4j/ActiveRel#inspect`:
+
+**#inspect**
+  
+
+  .. code-block:: ruby
+
+     def inspect
+       attribute_pairs = attributes.sort.map { |key, value| "#{key}: #{value.inspect}" }
+       attribute_descriptions = attribute_pairs.join(', ')
+       separator = ' ' unless attribute_descriptions.empty?
+     
+       cypher_representation = "#{node_cypher_representation(from_node)}-[:#{type}]->#{node_cypher_representation(to_node)}"
+       "#<#{self.class.name} #{cypher_representation}#{separator}#{attribute_descriptions}>"
      end
 
 
@@ -391,7 +399,7 @@ Methods
 **#neo4j_obj**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def neo4j_obj
        _persisted_obj || fail('Tried to access native neo4j object on a non persisted object')
@@ -404,7 +412,7 @@ Methods
 **#neo_id**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def neo_id
        _persisted_obj ? _persisted_obj.neo_id : nil
@@ -417,7 +425,7 @@ Methods
 **#new?**
   Returns +true+ if the record hasn't been saved to Neo4j yet.
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def new_record?
        !_persisted_obj
@@ -430,10 +438,27 @@ Methods
 **#new_record?**
   Returns +true+ if the record hasn't been saved to Neo4j yet.
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def new_record?
        !_persisted_obj
+     end
+
+
+
+.. _`Neo4j/ActiveRel#node_cypher_representation`:
+
+**#node_cypher_representation**
+  
+
+  .. code-block:: ruby
+
+     def node_cypher_representation(node)
+       node_class = node.class
+       id_name = node_class.id_property_name
+       labels = ':' + node_class.mapped_label_names.join(':')
+     
+       "(#{labels} {#{id_name}: #{node.id.inspect}})"
      end
 
 
@@ -443,7 +468,7 @@ Methods
 **#persisted?**
   Returns +true+ if the record is persisted, i.e. it's not a new record and it was not destroyed
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def persisted?
        !new_record? && !destroyed?
@@ -456,10 +481,64 @@ Methods
 **#props**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def props
        attributes.reject { |_, v| v.nil? }.symbolize_keys
+     end
+
+
+
+.. _`Neo4j/ActiveRel#props_for_create`:
+
+**#props_for_create**
+  Returns a hash containing:
+  * All properties and values for insertion in the database
+  * A `uuid` (or equivalent) key and value
+  * A `_classname` property, if one is to be set
+  * Timestamps, if the class is set to include them.
+  Note that the UUID is added to the hash but is not set on the node.
+  The timestamps, by comparison, are set on the node prior to addition in this hash.
+
+  .. code-block:: ruby
+
+     def props_for_create
+       inject_timestamps!
+       converted_props = props_for_db(props)
+       inject_classname!(converted_props)
+       inject_defaults!(converted_props)
+       return converted_props unless self.class.respond_to?(:default_property_values)
+       inject_primary_key!(converted_props)
+     end
+
+
+
+.. _`Neo4j/ActiveRel#props_for_persistence`:
+
+**#props_for_persistence**
+  
+
+  .. code-block:: ruby
+
+     def props_for_persistence
+       _persisted_obj ? props_for_update : props_for_create
+     end
+
+
+
+.. _`Neo4j/ActiveRel#props_for_update`:
+
+**#props_for_update**
+  
+
+  .. code-block:: ruby
+
+     def props_for_update
+       update_magic_properties
+       changed_props = attributes.select { |k, _| changed_attributes.include?(k) }
+       changed_props.symbolize_keys!
+       props_for_db(changed_props)
+       inject_defaults!(changed_props)
      end
 
 
@@ -469,7 +548,7 @@ Methods
 **#read_attribute**
   Returning nil when we get ActiveAttr::UnknownAttributeError from ActiveAttr
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def read_attribute(name)
        super(name)
@@ -484,10 +563,23 @@ Methods
 **#read_attribute_for_validation**
   Implements the ActiveModel::Validation hook method.
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def read_attribute_for_validation(key)
        respond_to?(key) ? send(key) : self[key]
+     end
+
+
+
+.. _`Neo4j/ActiveRel#rel_type`:
+
+**#rel_type**
+  
+
+  .. code-block:: ruby
+
+     def type
+       self.class.type
      end
 
 
@@ -497,11 +589,11 @@ Methods
 **#reload**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def reload
        return self if new_record?
-       association_proxy_cache.clear
+       association_proxy_cache.clear if respond_to?(:association_proxy_cache)
        changed_attributes && changed_attributes.clear
        unless reload_from_database
          @_deleted = true
@@ -517,7 +609,7 @@ Methods
 **#reload_from_database**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def reload_from_database
        # TODO: - Neo4j::IdentityMap.remove_node_by_id(neo_id)
@@ -534,10 +626,10 @@ Methods
 **#save**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def save(*args)
-       unless self.persisted? || (from_node.respond_to?(:neo_id) && to_node.respond_to?(:neo_id))
+       unless _persisted_obj || (from_node.respond_to?(:neo_id) && to_node.respond_to?(:neo_id))
          fail Neo4j::ActiveRel::Persistence::RelInvalidError, 'from_node and to_node must be node objects'
        end
        super(*args)
@@ -550,7 +642,7 @@ Methods
 **#save!**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def save!(*args)
        fail RelInvalidError, self unless save(*args)
@@ -563,9 +655,10 @@ Methods
 **#send_props**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def send_props(hash)
+       return hash if hash.blank?
        hash.each { |key, value| self.send("#{key}=", value) }
      end
 
@@ -576,7 +669,7 @@ Methods
 **#serializable_hash**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def serializable_hash(*args)
        super.merge(id: id)
@@ -589,7 +682,7 @@ Methods
 **#serialized_properties**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def serialized_properties
        self.class.serialized_properties
@@ -602,7 +695,7 @@ Methods
 **#start_node**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      alias_method :start_node, :from_node
 
@@ -614,11 +707,22 @@ Methods
   Returns an Enumerable of all (primary) key attributes
   or nil if model.persisted? is false
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def to_key
-       persisted? ? [id] : nil
+       _persisted_obj ? [id] : nil
      end
+
+
+
+.. _`Neo4j/ActiveRel#to_node_neo_id`:
+
+**#to_node_neo_id**
+  
+
+  .. code-block:: ruby
+
+     alias_method :to_node_neo_id,   :end_node_neo_id
 
 
 
@@ -627,7 +731,7 @@ Methods
 **#touch**
   :nodoc:
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def touch(*) #:nodoc:
        run_callbacks(:touch) { super }
@@ -640,10 +744,10 @@ Methods
 **#type**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def type
-       self.class._type
+       self.class.type
      end
 
 
@@ -654,7 +758,7 @@ Methods
   Updates this resource with all the attributes from the passed-in Hash and requests that the record be saved.
   If saving fails because the resource is invalid then false will be returned.
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def update(attributes)
        self.attributes = process_attributes(attributes)
@@ -668,7 +772,7 @@ Methods
 **#update!**
   Same as {#update_attributes}, but raises an exception if saving fails.
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def update!(attributes)
        self.attributes = process_attributes(attributes)
@@ -682,7 +786,7 @@ Methods
 **#update_attribute**
   Convenience method to set attribute and #save at the same time
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def update_attribute(attribute, value)
        send("#{attribute}=", value)
@@ -696,7 +800,7 @@ Methods
 **#update_attribute!**
   Convenience method to set attribute and #save! at the same time
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def update_attribute!(attribute, value)
        send("#{attribute}=", value)
@@ -711,7 +815,7 @@ Methods
   Updates this resource with all the attributes from the passed-in Hash and requests that the record be saved.
   If saving fails because the resource is invalid then false will be returned.
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def update(attributes)
        self.attributes = process_attributes(attributes)
@@ -725,7 +829,7 @@ Methods
 **#update_attributes!**
   Same as {#update_attributes}, but raises an exception if saving fails.
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def update!(attributes)
        self.attributes = process_attributes(attributes)
@@ -739,10 +843,10 @@ Methods
 **#valid?**
   
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def valid?(context = nil)
-       context     ||= (new_record? ? :create : :update)
+       context ||= (new_record? ? :create : :update)
        super(context)
        errors.empty?
      end
@@ -755,7 +859,7 @@ Methods
   Implements the Neo4j::Node#wrapper and Neo4j::Relationship#wrapper method
   so that we don't have to care if the node is wrapped or not.
 
-  .. hidden-code-block:: ruby
+  .. code-block:: ruby
 
      def wrapper
        self

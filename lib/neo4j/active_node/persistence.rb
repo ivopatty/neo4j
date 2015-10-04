@@ -23,9 +23,10 @@ module Neo4j::ActiveNode
     # There's a series of callbacks associated with save.
     # If any of the before_* callbacks return false the action is cancelled and save returns false.
     def save(*)
-      update_magic_properties
-      association_proxy_cache.clear
-      create_or_update
+      cascade_save do
+        association_proxy_cache.clear
+        create_or_update
+      end
     end
 
     # Persist the object to the database.  Validations and Callbacks are included
@@ -39,31 +40,57 @@ module Neo4j::ActiveNode
     # @see Neo4j::Rails::Validations Neo4j::Rails::Validations - for the :validate parameter
     # @see Neo4j::Rails::Callbacks Neo4j::Rails::Callbacks - for callbacks
     def save!(*args)
-      fail RecordInvalidError, self unless save(*args)
+      save(*args) or fail(RecordInvalidError, self) # rubocop:disable Style/AndOr
     end
 
     # Creates a model with values matching those of the instance attributes and returns its id.
     # @private
     # @return true
-    def create_model(*)
-      create_magic_properties
-      set_timestamps
-      create_magic_properties
-      properties = self.class.declared_property_manager.convert_properties_to(self, :db, props)
-      node = _create_node(properties)
+    def create_model
+      node = _create_node(props_for_create)
       init_on_load(node, node.props)
       send_props(@relationship_props) if @relationship_props
-      @relationship_props = nil
+      @relationship_props = @deferred_nodes = nil
       true
     end
 
-    def _create_node(*args)
-      session = self.class.neo4j_session
-      props = self.class.default_property_values(self)
-      props.merge!(args[0]) if args[0].is_a?(Hash)
-      set_classname(props)
-      labels = self.class.mapped_label_names
-      session.create_node(props, labels)
+    # TODO: This does not seem like it should be the responsibility of the node.
+    # Creates an unwrapped node in the database.
+    # @param [Hash] node_props The type-converted properties to be added to the new node.
+    # @param [Array] labels The labels to use for creating the new node.
+    # @return [Neo4j::Node] A CypherNode or EmbeddedNode
+    def _create_node(node_props, labels = labels_for_create)
+      self.class.neo4j_session.create_node(node_props, labels)
+    end
+
+    # As the name suggests, this inserts the primary key (id property) into the properties hash.
+    # The method called here, `default_property_values`, is a holdover from an earlier version of the gem. It does NOT
+    # contain the default values of properties, it contains the Default Property, which we now refer to as the ID Property.
+    # It will be deprecated and renamed in a coming refactor.
+    # @param [Hash] converted_props A hash of properties post-typeconversion, ready for insertion into the DB.
+    def inject_primary_key!(converted_props)
+      self.class.default_property_values(self).tap do |destination_props|
+        destination_props.merge!(converted_props) if converted_props.is_a?(Hash)
+      end
+    end
+
+    # @return [Array] Labels to be set on the node during a create event
+    def labels_for_create
+      self.class.mapped_label_names
+    end
+
+    private
+
+    # The pending associations are cleared during the save process, so it's necessary to
+    # build the processable hash before it begins. If there are nodes and associations that
+    # need to be created after the node is saved, a new transaction is started.
+    def cascade_save
+      deferred_nodes = pending_associations_with_nodes
+      Neo4j::Transaction.run(!deferred_nodes.blank?) do
+        result = yield
+        process_unpersisted_nodes!(deferred_nodes) if deferred_nodes
+        result
+      end
     end
 
     module ClassMethods
@@ -71,7 +98,6 @@ module Neo4j::ActiveNode
       # @param [Hash] props the properties the new node should have
       def create(props = {})
         association_props = extract_association_attributes!(props) || {}
-
         new(props).tap do |obj|
           yield obj if block_given?
           obj.save
@@ -127,29 +153,11 @@ module Neo4j::ActiveNode
       private
 
       def on_create_props(find_attributes)
-        {id_property_name => id_prop_val(find_attributes)}.tap do |props|
-          now = DateTime.now.to_i
-          set_props_timestamp!('created_at', props, now)
-          set_props_timestamp!('updated_at', props, now)
-        end
-      end
-
-      # The process of creating custom id_property values is different from auto uuids. This adapts to that, calls the appropriate method,
-      # and raises an error if it fails.
-      def id_prop_val(find_attributes)
-        custom_uuid_method = id_property_info[:type][:on]
-        id_prop_val = custom_uuid_method ? self.new(find_attributes).send(custom_uuid_method) : default_properties[id_property_name].call
-        fail 'Unable to create custom id property' if id_prop_val.nil?
-        id_prop_val
+        find_attributes.merge(self.new(find_attributes).props_for_create)
       end
 
       def on_match_props
-        set_props_timestamp!('updated_at')
-      end
-
-      def set_props_timestamp!(key_name, props = {}, stamp = DateTime.now.to_i)
-        props[key_name.to_sym] = stamp if attributes_nil_hash.key?(key_name)
-        props
+        {}.tap { |props| props[:updated_at] = DateTime.now.to_i if attributes_nil_hash.key?('updated_at'.freeze) }
       end
     end
   end

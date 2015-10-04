@@ -24,7 +24,7 @@ module Neo4j::Shared
       @_attributes_string_map = nil
       registered_properties[property.name] = property
       register_magic_typecaster(property) if property.magic_typecaster
-      declared_property_defaults[property.name] = property.default_value if property.default_value
+      declared_property_defaults[property.name] = property.default_value if !property.default_value.nil?
     end
 
     # The :default option in Neo4j::ActiveNode#property class method allows for setting a default value instead of
@@ -111,6 +111,23 @@ module Neo4j::Shared
     # The known mappings of declared properties and their primitive types.
     def upstream_primitives
       @upstream_primitives ||= {}
+    end
+
+    EXCLUDED_TYPES = [Array, Range, Regexp]
+    def value_for_where(key, value)
+      return value unless prop = registered_properties[key]
+      return value_for_db(key, value) if prop.typecaster && prop.typecaster.convert_type == value.class
+      EXCLUDED_TYPES.include?(value.class) ? value : value_for_db(key, value)
+    end
+
+    def value_for_db(key, value)
+      return value unless registered_properties[key]
+      convert_property(key, value, :to_db)
+    end
+
+    def value_for_ruby(key, value)
+      return unless registered_properties[key]
+      convert_property(key, value, :to_ruby)
     end
 
     protected

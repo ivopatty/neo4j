@@ -93,11 +93,11 @@ shared_examples_for 'example app with orm_adapter fix' do
           user_adapter.find_first(name: 'Betty').should.nil?
         end
 
-        it 'should return the first model if no conditions passed' do
-          user = create_model(user_class)
-          create_model(user_class)
-          user_adapter.find_first.neo_id.should eq(user.neo_id)
-        end
+        # it 'should return the first model if no conditions passed' do
+        #   user = create_model(user_class)
+        #   create_model(user_class)
+        #   user_adapter.find_first.neo_id.should eq(user.neo_id)
+        # end
 
         it 'when conditions contain associated object, should return first model if it exists' do
           user = create_model(user_class)
@@ -154,7 +154,8 @@ shared_examples_for 'example app with orm_adapter fix' do
         end
 
         it 'when conditions contain associated object, should return first model if it exists' do
-          user1, user2 = create_model(user_class), create_model(user_class)
+          user1 = create_model(user_class)
+          user2 = create_model(user_class)
           create_model(note_class, owner: user1)
 
           note = create_model(note_class, owner: user2)
@@ -231,7 +232,7 @@ shared_examples_for 'example app with orm_adapter fix' do
       it 'should destroy the instance if it exists' do
         skip 'This does not work on Neo4j Embedded DB, since IDs can be reused see GraphDatabaseService#getNodeById, http://docs.neo4j.org/chunked/2.1.1/javadocs/'
         user = create_model(user_class)
-        (!!user_adapter.destroy(user)).should eq(true)  # make it work with both RSpec 2.x and 3.x
+        (!!user_adapter.destroy(user)).should eq(true) # make it work with both RSpec 2.x and 3.x
         user_adapter.get(user.id).should be_nil
       end
 
